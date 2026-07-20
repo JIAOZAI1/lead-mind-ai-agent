@@ -16,7 +16,7 @@ WORKDIR /app
 
 COPY --from=build /out/server /app/server
 
-USER nonroot:nonroot
+# USER nonroot:nonroot
 EXPOSE 8080
 
 ENTRYPOINT ["/app/server"]
