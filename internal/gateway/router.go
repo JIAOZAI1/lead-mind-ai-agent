@@ -18,13 +18,17 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 
 	mux.Handle("GET /healthz", middleware.Logging(http.HandlerFunc(handler.Health)))
 
+	// All externally-exposed business routes are namespaced under
+	// /ai-agent, matching the k8s Service/Deployment name (see
+	// deployments/k8s/). /healthz is intentionally excluded — it's a
+	// cluster-internal probe endpoint, not a public API route.
 	tenantScoped := http.NewServeMux()
-	tenantScoped.HandleFunc("POST /v1/chat", deps.Chat)
-	tenantScoped.HandleFunc("GET /v1/chat/stream", deps.ChatStream)
+	tenantScoped.HandleFunc("POST /ai-agent/v1/chat", deps.Chat)
+	tenantScoped.HandleFunc("GET /ai-agent/v1/chat/stream", deps.ChatStream)
 	// Logging wraps WithTenant's *output*, i.e. runs inside tenant
 	// resolution, so it observes the request after tenant_id has been
 	// attached to context and can log it.
-	mux.Handle("/v1/", middleware.WithTenant(middleware.Logging(tenantScoped)))
+	mux.Handle("/ai-agent/", middleware.WithTenant(middleware.Logging(tenantScoped)))
 
 	return mux
 }

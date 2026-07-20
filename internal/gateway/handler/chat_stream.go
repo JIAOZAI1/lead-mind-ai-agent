@@ -17,7 +17,7 @@ type streamDeltaEvent struct {
 	Delta    string `json:"delta"`
 }
 
-// ChatStream handles GET /v1/chat/stream?message=... over SSE, streaming
+// ChatStream handles GET /ai-agent/v1/chat/stream?message=... over SSE, streaming
 // the ReAct agent's content deltas as they're generated. Tool-call
 // intermediate steps are not surfaced to the client yet — only the final
 // assistant message stream (see internal/agent/react.New, which does not

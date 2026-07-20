@@ -19,7 +19,7 @@ type chatResponse struct {
 	Reply    string `json:"reply"`
 }
 
-// Chat handles POST /v1/chat: it runs the request message through a
+// Chat handles POST /ai-agent/v1/chat: it runs the request message through a
 // single-turn ReAct agent and returns the final reply. Session/multi-turn
 // history is not wired up yet (see internal/memory, PROJECT.md §5 阶段一
 // scope is single-turn tool calling).
