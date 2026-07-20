@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/leadmind/lead-mind-ai-agent/internal/tenant"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
 )
 
 type chatRequest struct {

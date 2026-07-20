@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/leadmind/lead-mind-ai-agent/internal/gateway"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway"
 )
 
 func main() {

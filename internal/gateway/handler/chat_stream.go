@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/leadmind/lead-mind-ai-agent/internal/tenant"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
 )
 
 // ChatStream handles GET /v1/chat/stream over SSE. Like Chat, this is a

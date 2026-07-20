@@ -6,8 +6,8 @@ package gateway
 import (
 	"net/http"
 
-	"github.com/leadmind/lead-mind-ai-agent/internal/gateway/handler"
-	"github.com/leadmind/lead-mind-ai-agent/internal/gateway/middleware"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway/handler"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway/middleware"
 )
 
 // NewRouter builds the top-level HTTP handler for the gateway.

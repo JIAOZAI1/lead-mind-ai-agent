@@ -174,7 +174,7 @@ lead-mind-ai-agent/
 | 2026-07-21 | MVP 阶段不引入独立向量库 | 数据量未到需要独立向量库的规模，避免过早引入基础设施复杂度 |
 | 2026-07-21 | 多租户隔离改为**数据库级物理隔离**（独立库/schema），`tenant_id` 仅用于网关层路由，非表内过滤条件 | 明确当前已落地的隔离方式：网关已携带 tenant_id 做路由；更正此前"共享库+逻辑隔离"的错误假设 |
 | 2026-07-21 | 网关层落地：`internal/gateway`（router + middleware + handler），用标准库 `net/http`（Go 1.22+ 的 `ServeMux` pattern routing）而非第三方路由框架；`tenant_id` 从 header 读取，暂无鉴权；chat/chat_stream handler 为占位实现 | 遵循 §6.4 依赖引入原则——MVP 网关路由需求简单，标准库够用，不为"可能需要更强路由能力"提前引入 chi/gin；Agent 编排层未就绪前先打通 HTTP/SSE 骨架和 tenant 路由链路 |
-| 2026-07-21 | Go module 路径暂定 `github.com/leadmind/lead-mind-ai-agent`（占位） | 用户未提供实际 GitHub org/域名，先用占位路径不阻塞开发；确定实际路径后需 `go mod edit -module` 统一替换 |
+| 2026-07-21 | Go module 路径确定为 `github.com/JIAOZAI1/lead-mind-ai-agent`，与实际 GitHub 仓库一致 | 替换此前的占位路径 `github.com/leadmind/lead-mind-ai-agent`；已同步更新 go.mod 及所有内部包 import 路径 |
 
 > 后续每次做出影响架构方向的决策（例如：是否上多 Agent、是否切换模型供应商权重、是否引入向量库），都在此表追加一行，写清楚"是什么"和"为什么"。
 

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/leadmind/lead-mind-ai-agent/internal/tenant"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
 )
 
 // responseRecorder captures the status code written by downstream handlers

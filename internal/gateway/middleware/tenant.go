@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/leadmind/lead-mind-ai-agent/internal/tenant"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
 )
 
 // TenantHeader is the request header carrying the routing tenant ID.
