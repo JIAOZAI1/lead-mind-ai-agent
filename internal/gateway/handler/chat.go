@@ -6,7 +6,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/identity"
 )
 
 type chatRequest struct {
@@ -15,8 +15,8 @@ type chatRequest struct {
 }
 
 type chatResponse struct {
-	TenantID string `json:"tenant_id"`
-	Reply    string `json:"reply"`
+	TenantCode string `json:"tenant_code"`
+	Reply      string `json:"reply"`
 }
 
 // Chat handles POST /ai-agent/v1/chat: it runs the request message through a
@@ -40,7 +40,7 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	tenantID, _ := tenant.FromContext(ctx)
+	id, _ := identity.FromContext(ctx)
 
 	a, err := d.newAgent(ctx)
 	if err != nil {
@@ -56,7 +56,7 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(chatResponse{
-		TenantID: tenantID,
-		Reply:    reply.Content,
+		TenantCode: id.TenantCode,
+		Reply:      reply.Content,
 	})
 }

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/identity"
 )
 
 // responseRecorder captures the status code written by downstream handlers
@@ -28,8 +28,9 @@ func (r *responseRecorder) Flush() {
 	}
 }
 
-// Logging logs each request's method, path, tenant, status, and duration.
-// Tenant tagging here is the minimum observability bar from PROJECT.md §6.3.
+// Logging logs each request's method, path, tenant/user identity, status,
+// and duration. Tenant/user tagging here is the minimum observability bar
+// from PROJECT.md §6.3.
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -37,11 +38,12 @@ func Logging(next http.Handler) http.Handler {
 
 		next.ServeHTTP(rec, r)
 
-		tenantID, _ := tenant.FromContext(r.Context())
+		id, _ := identity.FromContext(r.Context())
 		slog.Info("request",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"tenant_id", tenantID,
+			"tenant_code", id.TenantCode,
+			"user_id", id.UserID,
 			"status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)

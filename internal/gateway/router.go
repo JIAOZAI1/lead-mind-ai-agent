@@ -1,6 +1,8 @@
 // Package gateway wires HTTP routing and middleware. Per PROJECT.md §3,
-// the gateway layer owns tenant routing (via the tenant_id header) and
-// SSE streaming; auth and rate limiting are out of scope for now.
+// the gateway layer owns tenant routing (via the X-Tenant-Code header,
+// alongside X-User-Id/X-Username/X-User-Roles for caller identity — all
+// injected upstream) and SSE streaming; auth itself and rate limiting are
+// out of scope for now.
 package gateway
 
 import (
@@ -25,10 +27,10 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 	tenantScoped := http.NewServeMux()
 	tenantScoped.HandleFunc("POST /ai-agent/v1/chat", deps.Chat)
 	tenantScoped.HandleFunc("GET /ai-agent/v1/chat/stream", deps.ChatStream)
-	// Logging wraps WithTenant's *output*, i.e. runs inside tenant
-	// resolution, so it observes the request after tenant_id has been
-	// attached to context and can log it.
-	mux.Handle("/ai-agent/", middleware.WithTenant(middleware.Logging(tenantScoped)))
+	// Logging wraps WithIdentity's *output*, i.e. runs inside identity
+	// resolution, so it observes the request after tenant/user identity
+	// has been attached to context and can log it.
+	mux.Handle("/ai-agent/", middleware.WithIdentity(middleware.Logging(tenantScoped)))
 
 	return mux
 }

@@ -9,12 +9,12 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/identity"
 )
 
 type streamDeltaEvent struct {
-	TenantID string `json:"tenant_id"`
-	Delta    string `json:"delta"`
+	TenantCode string `json:"tenant_code"`
+	Delta      string `json:"delta"`
 }
 
 // ChatStream handles GET /ai-agent/v1/chat/stream?message=... over SSE, streaming
@@ -36,7 +36,7 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	tenantID, _ := tenant.FromContext(ctx)
+	id, _ := identity.FromContext(ctx)
 
 	a, err := d.newAgent(ctx)
 	if err != nil {
@@ -77,7 +77,7 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		data, _ := json.Marshal(streamDeltaEvent{TenantID: tenantID, Delta: chunk.Content})
+		data, _ := json.Marshal(streamDeltaEvent{TenantCode: id.TenantCode, Delta: chunk.Content})
 		fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
 		flusher.Flush()
 	}

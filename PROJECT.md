@@ -15,7 +15,7 @@
 ### 1.1 目标客户：中小企业（SMB）
 
 - **获客方式**：自助注册（self-serve），按订阅套餐（Free/Pro/Team 等）收费，非销售驱动。
-- **隔离级别**：**数据库级物理隔离**——每个租户拥有独立的 MySQL 数据库/schema。`tenant_id` 在网关层携带并完成路由（决定请求落到哪个租户库），而非用于单库内的表级过滤。
+- **隔离级别**：**数据库级物理隔离**——每个租户拥有独立的 MySQL 数据库/schema。`X-Tenant-Code` 由上游网关/认证代理注入到请求头，在本服务的网关层读取并完成路由（决定请求落到哪个租户库），而非用于单库内的表级过滤。
 - **成本敏感**：SMB 对单价敏感，模型调用成本、基础设施成本必须可控——这直接影响第 3 节的模型供应商策略和第 6 节的多租户配额设计。
 - **不需要**：SSO/SAML、私有化部署、专属 VPC——这些是 Enterprise 客户的需求，MVP 阶段不做，但数据模型要为未来"租户级别升级"留口子（例如 `tenants` 表预留 `tier` 字段）。
 
@@ -66,7 +66,7 @@ Agent 编排层 (ReAct Agent 优先, 多 Agent 为高级能力, Interrupt/Resume
         ↓
 基础设施层 (MySQL · Redis · 对象存储 · MQ)
 
-贯穿：可观测性(OTel) · 审批网关(HITL) · 多租户隔离(网关层 tenant_id 路由至独立库) · 密钥管理
+贯穿：可观测性(OTel) · 审批网关(HITL) · 多租户隔离(网关层 X-Tenant-Code 路由至独立库) · 密钥管理
 ```
 
 ### 3.1 目录结构（初始骨架，随实现调整）
@@ -84,8 +84,8 @@ lead-mind-ai-agent/
 │   ├── server/                   # 主服务入口
 │   └── worker/                   # 异步任务/长流程 worker
 ├── internal/
-│   ├── gateway/                   # API 网关：路由、tenant_id 中间件、HTTP/SSE handler（已实现）
-│   │   ├── middleware/            # WithTenant（读 tenant_id header）、Logging
+│   ├── gateway/                   # API 网关：路由、身份识别中间件、HTTP/SSE handler（已实现）
+│   │   ├── middleware/            # WithIdentity（读 X-Tenant-Code/X-User-Id/X-Username/X-User-Roles header）、Logging
 │   │   ├── handler/                # health（占位）/ chat / chat_stream（已接入 ReAct Agent，见下）
 │   │   └── router.go
 │   ├── agent/
@@ -97,7 +97,7 @@ lead-mind-ai-agent/
 │   ├── tools/
 │   │   └── builtin/               # 内置工具（已实现 current_time；custom/approval 待补）
 │   ├── rag/                      # 检索增强（后置阶段：indexer/, retriever/, rerank/）
-│   ├── tenant/                   # 租户上下文（context.go，已实现）+ 未来的租户模型/配额/计费状态
+│   ├── identity/                 # 调用方身份上下文（context.go，已实现：TenantCode/UserID/Username/Roles）+ 未来的租户模型/配额/计费状态
 │   ├── memory/                   # 会话记忆（短期 Redis / 长期 MySQL）
 │   ├── checkpoint/               # CheckPoint 存储实现（基于 MySQL 或 Redis）
 │   ├── observability/            # Callback → OTel
@@ -116,9 +116,9 @@ lead-mind-ai-agent/
 
 ## 4. 多租户设计原则（SMB SaaS 的核心约束）
 
-1. **数据库级物理隔离**：每个租户拥有独立的 MySQL 数据库（或 schema）。网关层在请求入口解析 `tenant_id`（如从鉴权 token、子域名或 header 解出），完成到具体租户库的路由/连接选择；`tenant_id` 的职责是**路由**，不是表内过滤条件——业务代码不应假设同一张表里混着多个租户的数据。
-2. **连接管理**：应用层需要一套按 `tenant_id` 动态选择数据库连接（或连接池）的机制（如连接池注册表 + 路由中间件），新租户开通时要有明确的建库/建表（迁移）流程，不能依赖手工建库。
-3. **共享层仍需 `tenant_id` 隔离**：Redis 等跨租户共享的基础设施，缓存 key 仍需以 `tenant:{tenant_id}:` 为前缀；日志/trace 仍需打 `tenant_id` 标签，用于排查问题时定位到具体租户库。
+1. **数据库级物理隔离**：每个租户拥有独立的 MySQL 数据库（或 schema）。租户/用户身份由上游网关或认证代理解析后，通过请求头注入本服务：`X-Tenant-Code`（租户标识，用于路由）、`X-User-Id`/`X-Username`/`X-User-Roles`（调用用户信息）。本服务的网关层（`internal/gateway/middleware.WithIdentity`）只读取这些 header 并挂到 context（`internal/identity`），不做认证；`X-Tenant-Code` 的职责是**路由**，不是表内过滤条件——业务代码不应假设同一张表里混着多个租户的数据。
+2. **连接管理**：应用层需要一套按 `X-Tenant-Code`（即 `identity.Identity.TenantCode`）动态选择数据库连接（或连接池）的机制（如连接池注册表 + 路由中间件），新租户开通时要有明确的建库/建表（迁移）流程，不能依赖手工建库。
+3. **共享层仍需按租户隔离**：Redis 等跨租户共享的基础设施，缓存 key 仍需以 `tenant:{tenant_code}:` 为前缀；日志/trace 仍需打 `tenant_code`、`user_id` 标签，用于排查问题时定位到具体租户库和操作者。
 4. **配额与限流按租户维度**：模型调用次数/token 消耗、工具调用频率、Agent 并发数都要有按租户的限流（Redis 计数器），避免单租户耗尽共享资源（如模型 API 配额）影响其他租户。
 5. **计费预留字段**：`tenants`（全局路由/元数据库中）表设计时预留套餐等级（`tier`）、计费周期、用量统计字段、对应租户库的连接信息，即使 MVP 阶段先手动开通，也要让数据模型未来能接自动化计费。
 
@@ -132,7 +132,7 @@ lead-mind-ai-agent/
 搭 ReAct Agent + 基础内置工具 + 一个主力模型接入（国内模型，暂不接兜底）。目标：核心链路走通，租户能创建一个 Agent、配几个工具、跑通对话+工具调用。
 
 **阶段二：多租户与可观测性（1~2 周）**
-补齐网关层 `tenant_id` 路由与租户库连接管理、租户配额限流、Callback → OTel trace/metrics。这一步优先级极高——没有多租户隔离就不能叫 SaaS，没有可观测性后续所有优化都是盲人摸象。
+补齐网关层 `X-Tenant-Code` 路由与租户库连接管理、租户配额限流、Callback → OTel trace/metrics。这一步优先级极高——没有多租户隔离就不能叫 SaaS，没有可观测性后续所有优化都是盲人摸象。
 
 **阶段三：可控可恢复（2~3 周）**
 接入 CheckPoint（MySQL 实现）、高危工具审批网关（HITL）、模型降级链（国内主用 + 海外兜底）。这是从"能跑的 Demo"到"能商用"的关键阶段。
@@ -157,12 +157,12 @@ lead-mind-ai-agent/
 ### 6.2 多租户安全红线
 
 - 任何数据库连接的获取都必须经过统一的租户路由中间件/连接管理器，禁止业务代码绕过路由直连某个固定库或硬编码连接串，这是本项目最高优先级的安全红线（防止请求落到错误租户的库）。
-- 任何新增的 Redis 读写，Code Review 时必须检查 key 是否带 `tenant_id` 前缀（对标参考文档 §6 的"越权拦截"）。
+- 任何新增的 Redis 读写，Code Review 时必须检查 key 是否带 `tenant_code` 前缀（对标参考文档 §6 的"越权拦截"）。
 - 高危工具（发邮件、转账、外呼、写外部系统）必须经过审批网关（参考设计文档 §4.1 的 Gate/CheckPoint/Notification/Resume 四环节），不允许绕过。
 
 ### 6.3 可观测性最低要求
 
-- 每个 Agent 运行、每次模型调用、每次工具调用必须有 trace span，且带 `tenant_id`、`session_id` 标签。
+- 每个 Agent 运行、每次模型调用、每次工具调用必须有 trace span，且带 `tenant_code`、`user_id`、`session_id` 标签。
 - Token 消耗必须能按租户聚合统计（为未来计费和异常预警打基础）。
 
 ### 6.4 依赖引入原则
@@ -191,6 +191,7 @@ lead-mind-ai-agent/
 | 2026-07-21 | k8s manifest 去掉 Namespace 和 Ingress，只保留 ConfigMap/Secret/Deployment/Service，且都不再硬编码 `namespace:` 字段 | 用户明确不需要；不再假设特定命名空间或特定 ingress controller（nginx），部署时由调用方通过 `kubectl apply -n <ns>` 或所在 context 决定命名空间；对外暴露方式（Ingress/Gateway API/云厂商 LB 等）留给实际落地时按集群情况另定，不在这批 manifest 里预设 |
 | 2026-07-21 | `deployments/` 整个目录改为 gitignore，从 git 追踪中移除（`git rm --cached`），文件仍保留在本地磁盘 | 用户本地会往 `secret.yaml`/`configmap.yaml` 填真实的 API Key、模型端点等值用于自己部署测试；这类文件一旦被 git 追踪就有随手 commit 泄露密钥的风险，索性整个目录不进仓库，比"记得每次留空"更可靠；确认过历史提交（`8d1e9bd`、`86b8f00`）里的 `secret.yaml` 只有空字符串占位，没有真实密钥被推送到过 `origin`，无需重写历史；后续如需在仓库里保留 k8s manifest 模板供团队共享，应采用不含真实值的模板文件 + 文档说明用法，而不是让本地调试用的实例文件进仓库 |
 | 2026-07-21 | k8s Deployment/Service 名称改为 `ai-agent`（原 `server`），对外业务路由统一加 `/ai-agent` 前缀：`POST /ai-agent/v1/chat`、`GET /ai-agent/v1/chat/stream`（原 `/v1/chat`、`/v1/chat/stream`）；`/healthz` 保持不变，不加前缀 | k8s 资源命名与对外路由前缀对齐到 `ai-agent`，便于识别归属；`/healthz` 排除在外因为它是集群内部探活端点，不是对外业务接口，没必要跟着改；已用本地 mock OpenAI 兼容 server 验证新路径（同步 chat + SSE stream）均可用，旧路径 `/v1/...` 返回 404（路由已整体迁移，非双活）|
+| 2026-07-21 | 放弃自定义 `tenant_id` header 设计，改用上游网关/认证代理已注入的身份 header：`X-Tenant-Code`（租户，必填，缺失返回 400）+ `X-User-Id`/`X-Username`/`X-User-Roles`（用户信息，选填，不做强制校验）。`internal/tenant` 包整体重命名为 `internal/identity`，`identity.Identity{TenantCode, UserID, Username, Roles}` 结构承载全部身份信息；`middleware.WithTenant` 重命名为 `middleware.WithIdentity`；日志/响应体里的 `tenant_id` 字段全部改名 `tenant_code`，并新增 `user_id` | 用户明确要求放弃自建 tenant_id 设计，统一用上游已注入的 `X-Tenant-Code`；用户信息一并读取是为了给后续审批网关（§4.1，需要知道"谁"在操作）、多租户配额限流等场景铺路，不用等到真正要用时再补 header 解析逻辑；User 相关 header 选填而非必填，是因为不排除有只带租户身份、不带具体用户身份的系统级调用场景；已用本地 mock 端到端验证：旧 `tenant_id` header 现在完全不被识别（缺 `X-Tenant-Code` 时仍返回 400），新四个 header 都能正确进 context 并体现在日志和响应体里 |
 
 > 后续每次做出影响架构方向的决策（例如：是否上多 Agent、是否切换模型供应商权重、是否引入向量库），都在此表追加一行，写清楚"是什么"和"为什么"。
 
