@@ -13,7 +13,7 @@ const (
 	TenantCodeHeader = "X-Tenant-Code"
 	UserIDHeader     = "X-User-Id"
 	UsernameHeader   = "X-Username"
-	// UserRolesHeader  = "X-User-Roles"
+	UserRolesHeader  = "X-User-Roles"
 )
 
 // WithIdentity reads the identity headers off the request and attaches
@@ -33,7 +33,7 @@ func WithIdentity(next http.Handler) http.Handler {
 			TenantCode: tenantCode,
 			UserID:     r.Header.Get(UserIDHeader),
 			Username:   r.Header.Get(UsernameHeader),
-			// Roles:      r.Header.Get(UserRolesHeader),
+			Roles:      r.Header.Get(UserRolesHeader),
 		}
 
 		ctx := identity.NewContext(r.Context(), id)
