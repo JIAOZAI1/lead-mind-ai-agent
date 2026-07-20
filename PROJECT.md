@@ -79,11 +79,15 @@ lead-mind-ai-agent/
 │   ├── server/                   # 主服务入口
 │   └── worker/                   # 异步任务/长流程 worker
 ├── internal/
+│   ├── gateway/                   # API 网关：路由、tenant_id 中间件、HTTP/SSE handler（已实现）
+│   │   ├── middleware/            # WithTenant（读 tenant_id header）、Logging
+│   │   ├── handler/                # health / chat / chat_stream（chat 系列为占位，等 Agent 层）
+│   │   └── router.go
 │   ├── agent/                    # Agent 定义与编排（react/, multiagent/, registry.go）
 │   ├── model/                    # ChatModel 接入与治理（provider/, fallback.go, cache.go）
 │   ├── tools/                    # 工具实现（builtin/, custom/, approval/）
 │   ├── rag/                      # 检索增强（后置阶段：indexer/, retriever/, rerank/）
-│   ├── tenant/                   # 多租户模型：租户、配额、计费状态
+│   ├── tenant/                   # 租户上下文（context.go，已实现）+ 未来的租户模型/配额/计费状态
 │   ├── memory/                   # 会话记忆（短期 Redis / 长期 MySQL）
 │   ├── checkpoint/               # CheckPoint 存储实现（基于 MySQL 或 Redis）
 │   ├── observability/            # Callback → OTel
@@ -169,6 +173,8 @@ lead-mind-ai-agent/
 | 2026-07-21 | 模型策略：国内模型（豆包/通义等）主用，海外模型兜底 | 面向国内市场，合规与成本优先 |
 | 2026-07-21 | MVP 阶段不引入独立向量库 | 数据量未到需要独立向量库的规模，避免过早引入基础设施复杂度 |
 | 2026-07-21 | 多租户隔离改为**数据库级物理隔离**（独立库/schema），`tenant_id` 仅用于网关层路由，非表内过滤条件 | 明确当前已落地的隔离方式：网关已携带 tenant_id 做路由；更正此前"共享库+逻辑隔离"的错误假设 |
+| 2026-07-21 | 网关层落地：`internal/gateway`（router + middleware + handler），用标准库 `net/http`（Go 1.22+ 的 `ServeMux` pattern routing）而非第三方路由框架；`tenant_id` 从 header 读取，暂无鉴权；chat/chat_stream handler 为占位实现 | 遵循 §6.4 依赖引入原则——MVP 网关路由需求简单，标准库够用，不为"可能需要更强路由能力"提前引入 chi/gin；Agent 编排层未就绪前先打通 HTTP/SSE 骨架和 tenant 路由链路 |
+| 2026-07-21 | Go module 路径暂定 `github.com/leadmind/lead-mind-ai-agent`（占位） | 用户未提供实际 GitHub org/域名，先用占位路径不阻塞开发；确定实际路径后需 `go mod edit -module` 统一替换 |
 
 > 后续每次做出影响架构方向的决策（例如：是否上多 Agent、是否切换模型供应商权重、是否引入向量库），都在此表追加一行，写清楚"是什么"和"为什么"。
 
