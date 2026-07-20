@@ -1,0 +1,10 @@
+.git
+.gitignore
+*.md
+deployments
+evals
+configs
+migrations
+api
+/bin
+/dist
