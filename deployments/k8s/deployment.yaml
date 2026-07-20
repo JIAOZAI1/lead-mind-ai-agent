@@ -5,7 +5,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: server
-  namespace: lead-mind-ai-agent
   labels:
     app: lead-mind-ai-agent
     component: server

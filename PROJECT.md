@@ -108,7 +108,7 @@ lead-mind-ai-agent/
 ├── api/                          # proto / openapi 定义
 ├── configs/                      # 配置文件
 ├── deployments/
-│   └── k8s/                      # 已实现：namespace/configmap/secret(模板)/deployment/service/ingress(可选)
+│   └── k8s/                      # 已实现：configmap/secret(模板)/deployment/service（不含 namespace/ingress，见下方决策记录）
 ├── migrations/                   # MySQL schema 迁移
 └── evals/                        # 评估集与回归测试
 ```
@@ -188,7 +188,8 @@ lead-mind-ai-agent/
 | 2026-07-21 | Go module 路径确定为 `github.com/JIAOZAI1/lead-mind-ai-agent`，与实际 GitHub 仓库一致 | 替换此前的占位路径 `github.com/leadmind/lead-mind-ai-agent`；已同步更新 go.mod 及所有内部包 import 路径 |
 | 2026-07-21 | ReAct Agent 落地：`internal/agent/react`（包装 `eino/flow/agent/react`）+ `internal/model/provider`（OpenAI 兼容 ChatModel 工厂，经 `MODEL_BASE_URL`/`MODEL_API_KEY`/`MODEL_NAME` 环境变量配置）+ `internal/tools/builtin`（起步工具 `current_time`）；网关 `/v1/chat`、`/v1/chat/stream` 已接入真实 Agent 调用，替换此前占位实现 | 落地 §5 阶段一"单 Agent 可用"；`MaxStep` 固定默认 12（参考设计文档 §3.2 建议 8~15）；模型接入走 OpenAI 兼容协议而非绑定具体国内 SDK 包，实际切换豆包/通义时只需改环境变量指向对应兼容端点，代码不变；用本地 mock OpenAI 兼容 server 完整验证了 chat/stream 两条路径下的工具调用往返（模型请求工具→执行→结果回填→模型生成最终回复），未使用真实模型 API Key |
 | 2026-07-21 | Agent 层暂不做主用+海外兜底的降级链（`FallbackModel`），单模型直连 | §1.3 兜底策略是阶段三工作项（配合 CheckPoint/审批网关一起做）；阶段一只验证核心链路，避免过早引入降级逻辑的复杂度和测试面 |
-| 2026-07-21 | 补齐 `Dockerfile`（多阶段构建，`distroless/static-debian12:nonroot` 运行时）+ `.github/workflows/ci.yml`（build/vet/gofmt/test，镜像推送到 GHCR）+ `deployments/k8s/`（Namespace/ConfigMap/Secret 模板/Deployment/Service/可选 Ingress） | 落地 §8 部署与运维；镜像仓库选 GitHub Container Registry（ghcr.io），用 `GITHUB_TOKEN` 免额外配置 secret；K8s YAML 只部署 server 本身，不含 MySQL/Redis（视为外部依赖，按 §4.2 连接管理机制接入）；Secret 只给模板（`MODEL_API_KEY` 等敏感值留空，运维通过 `kubectl create secret` 或外部 secret 管理工具单独注入，不写入仓库）；Ingress 里显式加了 nginx 关闭 response buffering 的 annotation，避免 SSE 端点被默认缓冲行为打断——本地沙箱没有 Docker，Dockerfile 的 build stage 已用完全相同的 `CGO_ENABLED=0 GOOS=linux go build` 命令在本机验证过编译产物；K8s manifest 用 `kubectl apply --dry-run=client` 做过 schema 校验；`docker build`/`docker run` 的镜像本身未实际跑过，落地前建议在有 Docker 的环境跑一次 |
+| 2026-07-21 | 补齐 `Dockerfile`（多阶段构建，`distroless/static-debian12:nonroot` 运行时）+ `.github/workflows/ci.yml`（build/vet/gofmt/test，镜像推送到 GHCR）+ `deployments/k8s/`（ConfigMap/Secret 模板/Deployment/Service） | 落地 §8 部署与运维；镜像仓库选 GitHub Container Registry（ghcr.io），用 `GITHUB_TOKEN` 免额外配置 secret；K8s YAML 只部署 server 本身，不含 MySQL/Redis（视为外部依赖，按 §4.2 连接管理机制接入）；Secret 只给模板（`MODEL_API_KEY` 等敏感值留空，运维通过 `kubectl create secret` 或外部 secret 管理工具单独注入，不写入仓库）——本地沙箱没有 Docker，Dockerfile 的 build stage 已用完全相同的 `CGO_ENABLED=0 GOOS=linux go build` 命令在本机验证过编译产物；K8s manifest 用 `kubectl apply --dry-run=client` 做过 schema 校验；`docker build`/`docker run` 的镜像本身未实际跑过，落地前建议在有 Docker 的环境跑一次 |
+| 2026-07-21 | k8s manifest 去掉 Namespace 和 Ingress，只保留 ConfigMap/Secret/Deployment/Service，且都不再硬编码 `namespace:` 字段 | 用户明确不需要；不再假设特定命名空间或特定 ingress controller（nginx），部署时由调用方通过 `kubectl apply -n <ns>` 或所在 context 决定命名空间；对外暴露方式（Ingress/Gateway API/云厂商 LB 等）留给实际落地时按集群情况另定，不在这批 manifest 里预设 |
 
 > 后续每次做出影响架构方向的决策（例如：是否上多 Agent、是否切换模型供应商权重、是否引入向量库），都在此表追加一行，写清楚"是什么"和"为什么"。
 
