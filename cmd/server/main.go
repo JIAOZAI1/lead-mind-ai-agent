@@ -10,10 +10,41 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cloudwego/eino/components/tool"
+
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway/handler"
+	modelcfg "github.com/JIAOZAI1/lead-mind-ai-agent/internal/model"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/model/provider"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tools/builtin"
 )
 
 func main() {
+	ctx := context.Background()
+
+	cfg, err := modelcfg.ConfigFromEnv()
+	if err != nil {
+		slog.Error("model config error", "error", err)
+		os.Exit(1)
+	}
+
+	chatModel, err := provider.NewOpenAICompatible(ctx, cfg)
+	if err != nil {
+		slog.Error("failed to init chat model", "error", err)
+		os.Exit(1)
+	}
+
+	timeTool, err := builtin.NewCurrentTimeTool()
+	if err != nil {
+		slog.Error("failed to init builtin tools", "error", err)
+		os.Exit(1)
+	}
+
+	deps := handler.AgentDeps{
+		ChatModel: chatModel,
+		Tools:     []tool.BaseTool{timeTool},
+	}
+
 	addr := os.Getenv("SERVER_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -21,10 +52,10 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: gateway.NewRouter(),
+		Handler: gateway.NewRouter(deps),
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	runCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
@@ -35,7 +66,7 @@ func main() {
 		}
 	}()
 
-	<-ctx.Done()
+	<-runCtx.Done()
 	slog.Info("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

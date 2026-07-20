@@ -81,11 +81,16 @@ lead-mind-ai-agent/
 ├── internal/
 │   ├── gateway/                   # API 网关：路由、tenant_id 中间件、HTTP/SSE handler（已实现）
 │   │   ├── middleware/            # WithTenant（读 tenant_id header）、Logging
-│   │   ├── handler/                # health / chat / chat_stream（chat 系列为占位，等 Agent 层）
+│   │   ├── handler/                # health（占位）/ chat / chat_stream（已接入 ReAct Agent，见下）
 │   │   └── router.go
-│   ├── agent/                    # Agent 定义与编排（react/, multiagent/, registry.go）
-│   ├── model/                    # ChatModel 接入与治理（provider/, fallback.go, cache.go）
-│   ├── tools/                    # 工具实现（builtin/, custom/, approval/）
+│   ├── agent/
+│   │   └── react/                 # ReAct Agent 工厂（agent.go，已实现，包装 eino flow/agent/react）
+│   ├── model/                    # ChatModel 接入与治理（已实现 OpenAI 兼容 provider；fallback.go/cache.go 待阶段三）
+│   │   ├── config.go              # 主模型配置（环境变量：MODEL_BASE_URL/MODEL_API_KEY/MODEL_NAME）
+│   │   └── provider/
+│   │       └── openai_compatible.go  # 任意 OpenAI 兼容端点的 ChatModel 工厂
+│   ├── tools/
+│   │   └── builtin/               # 内置工具（已实现 current_time；custom/approval 待补）
 │   ├── rag/                      # 检索增强（后置阶段：indexer/, retriever/, rerank/）
 │   ├── tenant/                   # 租户上下文（context.go，已实现）+ 未来的租户模型/配额/计费状态
 │   ├── memory/                   # 会话记忆（短期 Redis / 长期 MySQL）
@@ -175,6 +180,8 @@ lead-mind-ai-agent/
 | 2026-07-21 | 多租户隔离改为**数据库级物理隔离**（独立库/schema），`tenant_id` 仅用于网关层路由，非表内过滤条件 | 明确当前已落地的隔离方式：网关已携带 tenant_id 做路由；更正此前"共享库+逻辑隔离"的错误假设 |
 | 2026-07-21 | 网关层落地：`internal/gateway`（router + middleware + handler），用标准库 `net/http`（Go 1.22+ 的 `ServeMux` pattern routing）而非第三方路由框架；`tenant_id` 从 header 读取，暂无鉴权；chat/chat_stream handler 为占位实现 | 遵循 §6.4 依赖引入原则——MVP 网关路由需求简单，标准库够用，不为"可能需要更强路由能力"提前引入 chi/gin；Agent 编排层未就绪前先打通 HTTP/SSE 骨架和 tenant 路由链路 |
 | 2026-07-21 | Go module 路径确定为 `github.com/JIAOZAI1/lead-mind-ai-agent`，与实际 GitHub 仓库一致 | 替换此前的占位路径 `github.com/leadmind/lead-mind-ai-agent`；已同步更新 go.mod 及所有内部包 import 路径 |
+| 2026-07-21 | ReAct Agent 落地：`internal/agent/react`（包装 `eino/flow/agent/react`）+ `internal/model/provider`（OpenAI 兼容 ChatModel 工厂，经 `MODEL_BASE_URL`/`MODEL_API_KEY`/`MODEL_NAME` 环境变量配置）+ `internal/tools/builtin`（起步工具 `current_time`）；网关 `/v1/chat`、`/v1/chat/stream` 已接入真实 Agent 调用，替换此前占位实现 | 落地 §5 阶段一"单 Agent 可用"；`MaxStep` 固定默认 12（参考设计文档 §3.2 建议 8~15）；模型接入走 OpenAI 兼容协议而非绑定具体国内 SDK 包，实际切换豆包/通义时只需改环境变量指向对应兼容端点，代码不变；用本地 mock OpenAI 兼容 server 完整验证了 chat/stream 两条路径下的工具调用往返（模型请求工具→执行→结果回填→模型生成最终回复），未使用真实模型 API Key |
+| 2026-07-21 | Agent 层暂不做主用+海外兜底的降级链（`FallbackModel`），单模型直连 | §1.3 兜底策略是阶段三工作项（配合 CheckPoint/审批网关一起做）；阶段一只验证核心链路，避免过早引入降级逻辑的复杂度和测试面 |
 
 > 后续每次做出影响架构方向的决策（例如：是否上多 Agent、是否切换模型供应商权重、是否引入向量库），都在此表追加一行，写清楚"是什么"和"为什么"。
 

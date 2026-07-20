@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/cloudwego/eino/schema"
+
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenant"
 )
 
@@ -17,12 +19,11 @@ type chatResponse struct {
 	Reply    string `json:"reply"`
 }
 
-// Chat handles POST /v1/chat. It is a routing/wiring placeholder: the
-// Agent orchestration layer (internal/agent) does not exist yet, so this
-// only proves the request reaches the handler with tenant context intact.
-// TODO: replace the mock body with a call into internal/agent once the
-// ReAct agent lands (see PROJECT.md §5 阶段一).
-func Chat(w http.ResponseWriter, r *http.Request) {
+// Chat handles POST /v1/chat: it runs the request message through a
+// single-turn ReAct agent and returns the final reply. Session/multi-turn
+// history is not wired up yet (see internal/memory, PROJECT.md §5 阶段一
+// scope is single-turn tool calling).
+func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
@@ -33,12 +34,29 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
+	if req.Message == "" {
+		http.Error(w, `{"error":"message is required"}`, http.StatusBadRequest)
+		return
+	}
 
-	tenantID, _ := tenant.FromContext(r.Context())
+	ctx := r.Context()
+	tenantID, _ := tenant.FromContext(ctx)
+
+	a, err := d.newAgent(ctx)
+	if err != nil {
+		http.Error(w, `{"error":"agent unavailable"}`, http.StatusInternalServerError)
+		return
+	}
+
+	reply, err := a.Generate(ctx, []*schema.Message{schema.UserMessage(req.Message)})
+	if err != nil {
+		http.Error(w, `{"error":"agent generation failed"}`, http.StatusBadGateway)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(chatResponse{
 		TenantID: tenantID,
-		Reply:    "not implemented yet: agent layer is not wired up",
+		Reply:    reply.Content,
 	})
 }
