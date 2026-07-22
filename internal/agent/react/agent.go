@@ -34,6 +34,13 @@ type Config struct {
 	SystemPrompt string
 	// MaxStep overrides defaultMaxStep when non-zero.
 	MaxStep int
+	// MessageRewriter, if set, is applied to the accumulated message
+	// history before ChatModel is called — this repo's context-window
+	// compaction hook (see internal/memory.NewMessageRewriter). It runs
+	// before SystemPrompt injection (Eino calls MessageRewriter ahead of
+	// MessageModifier), so it never needs to special-case stripping the
+	// system message.
+	MessageRewriter react.MessageModifier
 }
 
 // New builds a ReAct agent from cfg.
@@ -52,7 +59,8 @@ func New(ctx context.Context, cfg Config) (*react.Agent, error) {
 		ToolsConfig: compose.ToolsNodeConfig{
 			Tools: cfg.Tools,
 		},
-		MaxStep: maxStep,
+		MaxStep:         maxStep,
+		MessageRewriter: cfg.MessageRewriter,
 	}
 
 	if cfg.SystemPrompt != "" {

@@ -7,17 +7,36 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway/handler"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/longterm"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/shortterm"
 	modelcfg "github.com/JIAOZAI1/lead-mind-ai-agent/internal/model"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/model/provider"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/session"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenantdb"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tools/builtin"
 )
+
+func envDurationSeconds(name string, fallback time.Duration) time.Duration {
+	v := os.Getenv(name)
+	if v == "" {
+		return fallback
+	}
+	secs, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return time.Duration(secs) * time.Second
+}
 
 func main() {
 	ctx := context.Background()
@@ -40,9 +59,37 @@ func main() {
 		os.Exit(1)
 	}
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
+
+	shortTermTTL := envDurationSeconds("SHORTTERM_SESSION_TTL_SECONDS", 6*time.Hour)
+	shortTermStore := shortterm.NewRedisStore(redisClient, shortTermTTL)
+
+	ssoBaseURL := os.Getenv("SSO_SERVICE_BASE_URL")
+	if ssoBaseURL == "" {
+		ssoBaseURL = "http://sso-service.default.svc.cluster.local"
+	}
+	ssoClient := tenantdb.NewSSOClient(ssoBaseURL, os.Getenv("SSO_INTERNAL_TOKEN"))
+	dbInfoCacheTTL := envDurationSeconds("TENANTDB_INFO_CACHE_TTL_SECONDS", 10*time.Minute)
+	idleEvictAfter := envDurationSeconds("TENANTDB_IDLE_EVICT_SECONDS", 30*time.Minute)
+	registry := tenantdb.NewRegistry(ssoClient, dbInfoCacheTTL, idleEvictAfter)
+	defer registry.Close()
+
+	sessionStore := session.NewMySQLStore(registry)
+	longTermStore := longterm.NewMySQLStore(registry)
+
+	compactionCfg := memory.DefaultCompactionConfig(chatModel)
+
 	deps := handler.AgentDeps{
-		ChatModel: chatModel,
-		Tools:     []tool.BaseTool{timeTool},
+		ChatModel:  chatModel,
+		Tools:      []tool.BaseTool{timeTool},
+		Sessions:   sessionStore,
+		ShortTerm:  shortTermStore,
+		LongTerm:   longTermStore,
+		Compaction: compactionCfg,
 	}
 
 	addr := os.Getenv("SERVER_ADDR")

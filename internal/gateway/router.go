@@ -27,6 +27,9 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 	tenantScoped := http.NewServeMux()
 	tenantScoped.HandleFunc("POST /ai-agent/v1/chat", deps.Chat)
 	tenantScoped.HandleFunc("GET /ai-agent/v1/chat/stream", deps.ChatStream)
+	tenantScoped.HandleFunc("GET /ai-agent/v1/sessions", deps.ListSessions)
+	tenantScoped.HandleFunc("PATCH /ai-agent/v1/sessions/{id}", deps.PatchSession)
+	tenantScoped.HandleFunc("DELETE /ai-agent/v1/sessions/{id}", deps.DeleteSession)
 	// Logging wraps WithIdentity's *output*, i.e. runs inside identity
 	// resolution, so it observes the request after tenant/user identity
 	// has been attached to context and can log it.
