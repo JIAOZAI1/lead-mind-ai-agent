@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -60,23 +61,23 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 			UserID: id.UserID,
 			Title:  defaultTitle(message),
 		}); err != nil {
-			http.Error(w, `{"error":"failed to create session"}`, http.StatusInternalServerError)
+			httpError(ctx, w, r, err, "failed to create session", http.StatusInternalServerError)
 			return
 		}
 	} else if err := d.Sessions.Touch(ctx, id.TenantCode, sessionID); err != nil {
-		http.Error(w, `{"error":"failed to update session"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to update session", http.StatusInternalServerError)
 		return
 	}
 
 	history, err := d.ShortTerm.LoadHistory(ctx, id.TenantCode, sessionID)
 	if err != nil {
-		http.Error(w, `{"error":"failed to load conversation history"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to load conversation history", http.StatusInternalServerError)
 		return
 	}
 
 	a, err := d.newAgent(ctx)
 	if err != nil {
-		http.Error(w, `{"error":"agent unavailable"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "agent unavailable", http.StatusInternalServerError)
 		return
 	}
 
@@ -85,7 +86,7 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	stream, err := a.Stream(ctx, input)
 	if err != nil {
-		http.Error(w, `{"error":"agent stream failed"}`, http.StatusBadGateway)
+		httpError(ctx, w, r, err, "agent stream failed", http.StatusBadGateway)
 		return
 	}
 	defer stream.Close()
@@ -113,6 +114,19 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
+			// Headers (200) are already flushed at this point, so the
+			// error can only go out as an SSE frame — but that leaves no
+			// server-side trace unless logged explicitly here, since the
+			// wrapping middleware.Logging will record this request as a
+			// plain 200.
+			slog.Error("chat stream error",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"tenant_code", id.TenantCode,
+				"user_id", id.UserID,
+				"session_id", sessionID,
+				"error", err,
+			)
 			data, _ := json.Marshal(map[string]string{"error": err.Error()})
 			fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
 			flusher.Flush()
@@ -134,6 +148,14 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 	)
 	compacted := memory.Compact(ctx, d.Compaction, newHistory)
 	if err := d.ShortTerm.ReplaceHistory(ctx, id.TenantCode, sessionID, compacted); err != nil {
+		slog.Error("chat stream error",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"tenant_code", id.TenantCode,
+			"user_id", id.UserID,
+			"session_id", sessionID,
+			"error", err,
+		)
 		data, _ := json.Marshal(map[string]string{"error": "failed to persist conversation history"})
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
 		flusher.Flush()

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -54,7 +55,7 @@ func (d AgentDeps) ListSessions(w http.ResponseWriter, r *http.Request) {
 
 	sessions, err := d.Sessions.List(ctx, id.TenantCode, id.UserID, includeArchived)
 	if err != nil {
-		http.Error(w, `{"error":"failed to list sessions"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to list sessions", http.StatusInternalServerError)
 		return
 	}
 
@@ -81,7 +82,7 @@ func (d AgentDeps) PatchSession(w http.ResponseWriter, r *http.Request) {
 
 	owned, err := d.ownsSession(ctx, id.TenantCode, id.UserID, sessionID)
 	if err != nil {
-		http.Error(w, `{"error":"failed to look up session"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to look up session", http.StatusInternalServerError)
 		return
 	}
 	if !owned {
@@ -91,32 +92,36 @@ func (d AgentDeps) PatchSession(w http.ResponseWriter, r *http.Request) {
 
 	var req sessionPatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		httpError(ctx, w, r, err, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if req.Title != nil {
 		if err := d.Sessions.Rename(ctx, id.TenantCode, sessionID, *req.Title); err != nil {
-			http.Error(w, `{"error":"failed to rename session"}`, http.StatusInternalServerError)
+			httpError(ctx, w, r, err, "failed to rename session", http.StatusInternalServerError)
 			return
 		}
 	}
 	if req.Pinned != nil {
 		if err := d.Sessions.SetPinned(ctx, id.TenantCode, sessionID, *req.Pinned); err != nil {
-			http.Error(w, `{"error":"failed to update session"}`, http.StatusInternalServerError)
+			httpError(ctx, w, r, err, "failed to update session", http.StatusInternalServerError)
 			return
 		}
 	}
 	if req.Archived != nil {
 		if err := d.Sessions.SetArchived(ctx, id.TenantCode, sessionID, *req.Archived); err != nil {
-			http.Error(w, `{"error":"failed to update session"}`, http.StatusInternalServerError)
+			httpError(ctx, w, r, err, "failed to update session", http.StatusInternalServerError)
 			return
 		}
 	}
 
 	sess, ok, err := d.Sessions.Get(ctx, id.TenantCode, sessionID)
-	if err != nil || !ok {
-		http.Error(w, `{"error":"failed to reload session"}`, http.StatusInternalServerError)
+	if err != nil {
+		httpError(ctx, w, r, err, "failed to reload session", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		httpError(ctx, w, r, fmt.Errorf("session %s vanished after patch", sessionID), "failed to reload session", http.StatusInternalServerError)
 		return
 	}
 
@@ -138,7 +143,7 @@ func (d AgentDeps) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 	owned, err := d.ownsSession(ctx, id.TenantCode, id.UserID, sessionID)
 	if err != nil {
-		http.Error(w, `{"error":"failed to look up session"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to look up session", http.StatusInternalServerError)
 		return
 	}
 	if !owned {
@@ -147,11 +152,11 @@ func (d AgentDeps) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := d.Sessions.Delete(ctx, id.TenantCode, sessionID); err != nil {
-		http.Error(w, `{"error":"failed to delete session"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to delete session", http.StatusInternalServerError)
 		return
 	}
 	if err := d.ShortTerm.Reset(ctx, id.TenantCode, sessionID); err != nil {
-		http.Error(w, `{"error":"failed to clear session history"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to clear session history", http.StatusInternalServerError)
 		return
 	}
 

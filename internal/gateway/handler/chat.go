@@ -37,7 +37,7 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		httpError(r.Context(), w, r, err, "invalid request body", http.StatusBadRequest)
 		return
 	}
 	if req.Message == "" {
@@ -57,11 +57,11 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 			UserID: id.UserID,
 			Title:  defaultTitle(req.Message),
 		}); err != nil {
-			http.Error(w, `{"error":"failed to create session"}`, http.StatusInternalServerError)
+			httpError(ctx, w, r, err, "failed to create session", http.StatusInternalServerError)
 			return
 		}
 	} else if err := d.Sessions.Touch(ctx, id.TenantCode, sessionID); err != nil {
-		http.Error(w, `{"error":"failed to update session"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to update session", http.StatusInternalServerError)
 		return
 	}
 
@@ -70,13 +70,13 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 		// Fail closed rather than silently degrading to a stateless
 		// reply: a reply that looks normal but has silently lost prior
 		// context is harder to notice and debug than an explicit error.
-		http.Error(w, `{"error":"failed to load conversation history"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to load conversation history", http.StatusInternalServerError)
 		return
 	}
 
 	a, err := d.newAgent(ctx)
 	if err != nil {
-		http.Error(w, `{"error":"agent unavailable"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "agent unavailable", http.StatusInternalServerError)
 		return
 	}
 
@@ -85,14 +85,14 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 
 	reply, err := a.Generate(ctx, input)
 	if err != nil {
-		http.Error(w, `{"error":"agent generation failed"}`, http.StatusBadGateway)
+		httpError(ctx, w, r, err, "agent generation failed", http.StatusBadGateway)
 		return
 	}
 
 	newHistory := append(history, pkgschema.FromEinoMessage(schema.UserMessage(req.Message)), pkgschema.FromEinoMessage(reply))
 	compacted := memory.Compact(ctx, d.Compaction, newHistory)
 	if err := d.ShortTerm.ReplaceHistory(ctx, id.TenantCode, sessionID, compacted); err != nil {
-		http.Error(w, `{"error":"failed to persist conversation history"}`, http.StatusInternalServerError)
+		httpError(ctx, w, r, err, "failed to persist conversation history", http.StatusInternalServerError)
 		return
 	}
 

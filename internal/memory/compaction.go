@@ -10,6 +10,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -93,9 +94,13 @@ func Compact(ctx context.Context, cfg CompactionConfig, history []pkgschema.Mess
 	if err != nil {
 		// Summarization failing shouldn't break the request; fall back
 		// to a hard truncation (drop the oldest turns) rather than
-		// erroring the whole call. This is a degraded-but-safe path,
-		// not silently losing errors — the caller can inspect logs from
-		// the summarizer call itself.
+		// erroring the whole call. This is a degraded-but-safe path, so
+		// it must still be logged — falling back silently would mean
+		// conversation history quietly gets shorter with no trace of why.
+		slog.WarnContext(ctx, "compaction: summarization failed, falling back to hard truncation",
+			"error", err,
+			"dropped_turns", len(older),
+		)
 		out := make([]pkgschema.Message, 0)
 		for _, t := range recent {
 			out = append(out, t...)

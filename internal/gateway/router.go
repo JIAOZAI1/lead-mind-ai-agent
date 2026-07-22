@@ -18,7 +18,7 @@ import (
 func NewRouter(deps handler.AgentDeps) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /healthz", middleware.Logging(http.HandlerFunc(handler.Health)))
+	mux.Handle("GET /healthz", middleware.Recover(middleware.Logging(http.HandlerFunc(handler.Health))))
 
 	// All externally-exposed business routes are namespaced under
 	// /ai-agent, matching the k8s Service/Deployment name (see
@@ -30,10 +30,14 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 	tenantScoped.HandleFunc("GET /ai-agent/v1/sessions", deps.ListSessions)
 	tenantScoped.HandleFunc("PATCH /ai-agent/v1/sessions/{id}", deps.PatchSession)
 	tenantScoped.HandleFunc("DELETE /ai-agent/v1/sessions/{id}", deps.DeleteSession)
-	// Logging wraps WithIdentity's *output*, i.e. runs inside identity
-	// resolution, so it observes the request after tenant/user identity
-	// has been attached to context and can log it.
-	mux.Handle("/ai-agent/", middleware.WithIdentity(middleware.Logging(tenantScoped)))
+	// Recover and Logging wrap WithIdentity from the outside — ahead of
+	// identity resolution — so that a request rejected by WithIdentity
+	// (missing X-Tenant-Code) still produces a log line, and a panic
+	// anywhere downstream (including inside WithIdentity itself) is
+	// still caught and logged. Both read identity straight off request
+	// headers rather than context, so this ordering is for panic/error
+	// coverage, not identity visibility.
+	mux.Handle("/ai-agent/", middleware.Recover(middleware.Logging(middleware.WithIdentity(tenantScoped))))
 
 	return mux
 }

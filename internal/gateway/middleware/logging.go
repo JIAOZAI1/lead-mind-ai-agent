@@ -4,8 +4,6 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/identity"
 )
 
 // responseRecorder captures the status code written by downstream handlers
@@ -29,8 +27,17 @@ func (r *responseRecorder) Flush() {
 }
 
 // Logging logs each request's method, path, tenant/user identity, status,
-// and duration. Tenant/user tagging here is the minimum observability bar
-// from PROJECT.md §6.3.
+// and duration. Tenant/user tagging here is the minimum observability
+// bar from PROJECT.md §6.3. Identity is read directly off the request
+// headers (the same ones middleware.WithIdentity reads) rather than out
+// of context, so this works regardless of whether Logging sits inside or
+// outside WithIdentity in the chain — in particular, a request
+// WithIdentity itself rejects (missing X-Tenant-Code) still gets a
+// meaningful log line instead of one with an empty tenant_code. Status
+// is escalated to warn/error so failed requests are easy to filter for
+// without needing per-call-site error logging everywhere (though
+// handlers should still log the underlying error — this line only ever
+// carries the HTTP status, not the Go error value).
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -38,12 +45,17 @@ func Logging(next http.Handler) http.Handler {
 
 		next.ServeHTTP(rec, r)
 
-		id, _ := identity.FromContext(r.Context())
-		slog.Info("request",
+		level := slog.LevelInfo
+		if rec.status >= http.StatusInternalServerError {
+			level = slog.LevelError
+		} else if rec.status >= http.StatusBadRequest {
+			level = slog.LevelWarn
+		}
+		slog.Log(r.Context(), level, "request",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"tenant_code", id.TenantCode,
-			"user_id", id.UserID,
+			"tenant_code", r.Header.Get(TenantCodeHeader),
+			"user_id", r.Header.Get(UserIDHeader),
 			"status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
