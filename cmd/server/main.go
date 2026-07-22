@@ -59,11 +59,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
+	redisCfg, err := shortterm.RedisConfigFromEnv()
+	if err != nil {
+		slog.Error("redis config error", "error", err)
+		os.Exit(1)
 	}
-	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     redisCfg.Addr,
+		Username: redisCfg.Username,
+		Password: redisCfg.Password,
+		DB:       redisCfg.DB,
+	})
 
 	shortTermTTL := envDurationSeconds("SHORTTERM_SESSION_TTL_SECONDS", 6*time.Hour)
 	shortTermStore := shortterm.NewRedisStore(redisClient, shortTermTTL)
