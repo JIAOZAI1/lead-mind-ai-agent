@@ -98,7 +98,7 @@ lead-mind-ai-agent/
 │   │   └── builtin/               # 内置工具（已实现 current_time；custom/approval 待补）
 │   ├── rag/                      # 检索增强（后置阶段：indexer/, retriever/, rerank/）
 │   ├── identity/                 # 调用方身份上下文（context.go，已实现：TenantCode/UserID/Username/Roles）+ 未来的租户模型/配额/计费状态
-│   ├── memory/                   # 会话记忆（短期 Redis / 长期 MySQL）
+│   ├── memory/                   # 会话记忆（短期 Redis / 长期 MySQL 事实摘要 / 不过期的原始对话转录 transcript）
 │   ├── checkpoint/               # CheckPoint 存储实现（基于 MySQL 或 Redis）
 │   ├── observability/            # Callback → OTel
 │   ├── session/                  # 会话管理
@@ -174,12 +174,19 @@ lead-mind-ai-agent/
 ### 6.5 命名与日志规范
 
 - **命名可读性**：包名、函数名、变量名优先选择表达意图的完整词汇，不用无意义缩写（`tenantCode` 而非 `tc`，`connectionRegistry` 而非 `connReg`）；仅在算法/数学语境或极短作用域（如循环下标 `i`）下允许简写。
-- **注释**：默认不写注释；仅在代码本身无法表达"为什么"时才加——隐藏的约束、非显而易见的不变量、对已知 bug 的绕过、容易让人意外的行为（呼应本文档整体的注释原则，见仓库级 CLAUDE.md）。不写"这段代码在做什么"这类描述性注释。
+- **注释**：默认不写注释；仅在代码本身无法表达"为什么"时才加——隐藏的约束、非显而易见的不变量、对已知 bug 的绕过、容易让人意外的行为（呼应本文档整体的注释原则，见仓库级 CLAUDE.md）。不写"这段代码在做什么"这类描述性注释。**需要写注释时优先用中文**，与本仓库以中文交流、中文写决策记录的习惯保持一致；不要求回填已有的英文注释。
 - **日志规范化**：
   - 所有日志必须结构化输出（非拼接字符串），字段至少包含时间、级别、模块/来源。
   - 涉及租户请求链路的日志（含错误日志），必须携带 `tenant_code`、`user_id`、`session_id`（若存在），与 §6.3 可观测性的 trace span 标签保持一致，便于按租户排查问题。
   - **错误日志**必须包含：完整的错误链（`fmt.Errorf("...: %w", err)` 包装后的错误信息，不能只打印顶层错误丢失上下文）、触发错误的关键入参摘要（脱敏后，如租户/会话标识，不记录密码/API Key/完整用户输入等敏感内容）、发生错误的模块/函数位置。禁止吞错误后不打日志（静默失败）。
   - 日志级别用途明确：`ERROR` 仅用于需要人工关注的异常（外部服务失败、数据不一致等），正常业务分支（如工具未命中、用户输入校验不通过）用 `WARN` 或 `INFO`，避免报警噪音。
+
+### 6.6 时区规范
+
+- **容器/部署时区固定为 `Asia/Shanghai`（+8:00）**：`Dockerfile` runtime stage 必须 `apk add tzdata` 并软链 `/etc/localtime` 到 `Asia/Shanghai`，同时设置 `ENV TZ=Asia/Shanghai` 作为双保险（部分运行时不读 `/etc/localtime`，会退回读 `TZ`）。新增的部署方式（K8s Deployment、docker-compose 等）如果绕开本仓库 Dockerfile 直接指定基础镜像，必须同样设置 `TZ=Asia/Shanghai`。
+- **这只影响"人读"的时间展示（日志时间戳、`current_time` 工具的默认时区），不改变任何持久化时间语义**：所有落库/落 Redis 的时间戳字段必须继续显式使用 `time.Now().UTC()`（参考 `internal/memory/shortterm/store.go` 的 `last_active_at`），跨租户/跨服务比较时间时严禁依赖进程本地时区，只允许比较 UTC 时间戳或 `RFC3339` 里带时区偏移量的完整时间值。
+- 代码里禁止出现裸的 `time.Now()` 后直接落库/落缓存而不做 `.UTC()` 的写法；Code Review 时按此检查。
+- `internal/tools/builtin/current_time.go` 的 `current_time` 工具默认返回 UTC，调用方（模型）需要显式传 `timezone: "Asia/Shanghai"` 才会拿到北京时间——这是工具自身的输入契约，与本节的容器时区设置是两回事，不要混淆："容器时区"决定日志展示，"工具入参"决定返回给模型的时间字符串。
 
 ---
 
@@ -206,7 +213,10 @@ lead-mind-ai-agent/
 | 2026-07-23 | 明确租户 MySQL 连接信息的获取方式：不在本服务内静态配置，而是集群内部调用 sso-service（`GET http://sso-service.default.svc.cluster.local/internal/tenants/:tenantCode/db-info`），并携带 `X-Internal-Token` 标识内部调用身份 | 补充 §4.2 连接管理机制的缺失细节——此前只说"按 tenant_code 路由连接"，未明确连接信息从哪来；sso-service 是租户元数据的权威来源，本服务作为消费方通过内部 token 换取 db-info，避免每个服务各自维护一份租户库连接配置 |
 | 2026-07-23 | 新增 §6.5 命名与日志规范：命名要求可读性优先（禁止无意义缩写）、注释仅在"为什么"不显而易见时才写；日志要求结构化输出，租户链路日志（含错误日志）必须带 `tenant_code`/`user_id`/`session_id`，错误日志必须保留完整错误链（`%w` 包装）+ 脱敏入参摘要 + 出错位置，禁止吞错误不打日志 | 用户明确提出编码规范要求；与 §6.1（错误处理用 `%w` 包装、禁止吞错误）、§6.3（trace span 标签）已有规范衔接一致，避免规范分散在多处口头约定，统一收敛进 PROJECT.md 便于团队成员和后续 session 遵循 |
 | 2026-07-23 | 落地 Agent 记忆管理：`internal/tenantdb`（sso-service db-info 客户端 + 连接池 Registry，**空闲淘汰**而非进程生命周期长驻 + 极简 SQL 迁移执行器）、`internal/session`（session ID 生成/续接 + MySQL 会话元数据 Store，支持标题/置顶/归档/列表/删除）、`internal/memory/shortterm`（Redis 短期对话历史，`tenant:{tenant_code}:session:{id}:...` key 规范，6 小时活跃 TTL）、`internal/memory/compaction.go`（滑动窗口+摘要压缩，通过 Eino `react.AgentConfig.MessageRewriter` 钩子接入，同一份 `Compact` 函数供 handler 落盘复用避免漂移）、`internal/memory/longterm`（MySQL 用户偏好/session 摘要事实表）、`pkg/schema/message.go`（解耦 Message DTO，避免 `internal/memory` 直接依赖 `cloudwego/eino/schema`）；`chat.go`/`chat_stream.go` 接入历史读写与 session 登记，新增 `GET/PATCH/DELETE /ai-agent/v1/sessions...` 会话管理接口；新增直接依赖 `redis/go-redis/v9`、`go-sql-driver/mysql`，`google/uuid` 由间接依赖提升为直接依赖 | 落地 §5 阶段二前置的记忆管理功能性缺口（原 `chatRequest.SessionID` 字段存在但从未使用，服务此前完全无状态）；会话列表要求跨 Redis TTL 持久（标题/置顶/归档），故 session 元数据不能只放 Redis，必须落 MySQL，这牵出此前完全不存在的租户 DB 路由层，一并按"session 元数据 + 长期记忆刚好需要的最小版本"建设，不做通用连接池框架（§6.4）；连接池采用空闲淘汰（而非进程生命周期长驻）是因为长驻会让进程内存里累积所有曾访问过的租户的明文 DB 密码，一旦进程被攻破暴露面等于全部历史租户，空闲淘汰把暴露面收紧到最近活跃窗口；`tenant_code` 全程来自 `identity.FromContext(ctx)`，即每个请求自己的 header，不跨请求缓存，不存在用错租户上下文的风险；`go build`/`go vet`/`gofmt` 全绿，并为不依赖外部服务的纯逻辑部分（session ID 解析、`pkg/schema`↔`eino/schema` 互转、compaction 分轮/阈值/降级截断逻辑、sso-service 客户端的成功/404/401/500 分支、Registry 空闲淘汰的 map 增删）编写了单元测试且全部通过；沙箱环境没有 Docker/Redis/MySQL，**短期记忆 Redis 读写、session/长期记忆的 MySQL 集成、`MessageRewriter` 挂到真实 Eino Agent 后的端到端多轮对话未做真实环境验证**，落地前建议在有 Redis+MySQL 的环境补跑一次 |
+| 2026-07-24 | §6.5 补充：代码注释默认不写，需要写时优先用中文 | 用户明确要求；不强制回填已有英文注释，仅约束新增/修改的注释 |
+| 2026-07-24 | 落地不过期的对话内容存档：新增 `internal/memory/transcript`（MySQL append-only store，`agent_conversation_turns` 表，`migrations/0002_create_conversation_transcript.sql`，按 `session_id` 索引，只 `INSERT`，从不 `UPDATE`/摘要/截断）；`chat.go`/`chat_stream.go` 在写完 `ShortTerm.ReplaceHistory`（compaction 后的短期记忆）之后，额外把这一轮**压缩前的原始** user+assistant 消息 append 进 transcript；新增 `GET /ai-agent/v1/sessions/{id}/messages`（`session.go` 的 `GetSessionMessages`），复用既有 `ownsSession` 权限检查，返回某个 session 的完整历史消息（角色/内容/tool_calls/时间戳），供前端点开旧会话时拉取历史对话 | 用户反馈前端点开以前的会话看不到历史对话；排查发现 `GET /sessions` 从设计上就只返回元数据（title/pinned/archived等），从未有任何接口暴露对话内容，而唯一存有对话内容的 `internal/memory/shortterm`（Redis）只有 6 小时 TTL，过期后旧会话历史永久丢失、无法补救；用户明确要求"落地一份不过期的对话内容存储"，故新增独立于 compaction 逻辑之外的原始转录存档；写入点选在 compaction 之后仍存原始消息（而非存 `compacted` 结果），是因为 compaction 会把老 turns 摘要化甚至丢弃，若转录也存 compacted 后的内容，翻旧会话时看到的会是摘要而非真实原文，违背"存档"的本意；删除会话时**不**级联删除转录记录（用户明确选择"保留存档，不级联删除"），转录只按 `session_id` 关联，`agent_sessions` 记录被删后 `ownsSession` 会 404，等于该会话的转录内容不再可通过 API 访问（仅留作后台审计/合规用途，符合预期，非 bug）；`go build`/`go vet`/`go test ./...` 全绿，沙箱无 MySQL，新表结构与写入/查询 SQL 未做真实数据库集成验证，落地前建议在有 MySQL 的环境跑一次 |
 | 2026-07-23 | 补齐错误日志覆盖：新增 `internal/gateway/middleware/recover.go`（panic 恢复中间件，带栈追踪 + tenant/user 标签，替代 Go 默认的裸栈输出到 stderr）；新增 `internal/gateway/handler/httperror.go`（`httpError` helper，写 HTTP 错误响应的同时用 `slog` 记录底层 `error` 值，5xx 记 `ERROR`、4xx 记 `WARN`）并接入 `chat.go`/`chat_stream.go`/`session.go` 里此前直接 `http.Error(...)` 丢弃 `err` 的全部调用点；`chat_stream.go` 里 SSE 已开始后（headers 已 200）才发生的错误单独加 `slog.Error`（`event: error` 帧不会被外层请求日志记录为失败，因为状态码已提交为 200）；`compaction.go` 里摘要失败降级截断的分支补上 `slog.WarnContext`（原代码注释声称"调用方可以从日志排查"但实际从未打印）；`router.go` 里 `Logging`/`WithIdentity` 顺序调整为 `Recover(Logging(WithIdentity(...)))`，使缺 `X-Tenant-Code` 的 400 也能进请求日志；`Logging`/`Recover` 均直接从 request header 读租户/用户信息而非从 context 读，避开了"外层中间件读不到内层写入 context 的值"这个 `http.Request` context 不会向外传播的陷阱 | 用户反馈"日志不完善，很多报错日志都没有记录"；审计发现全仓库当时唯一的日志点是 `middleware.Logging` 的请求后摘要（只有 status/duration，没有 error 值）和 `main.go` 里的启动期错误，其余全部 `if err != nil { http.Error(...) }` 调用点（`chat.go`/`chat_stream.go`/`session.go` 约 20 处）和一次无 panic-recovery 中间件的裸奔状态；落地方式与刚新增的 §6.5 日志规范（结构化、带 tenant_code/user_id/session_id、保留错误链、ERROR 仅用于需要人工关注的异常）保持一致；`go build`/`go vet`/`gofmt`/`go test ./...` 全绿，并用一次性 smoke test（`httptest` 构造缺 header 请求 + panic handler）验证了缺 `X-Tenant-Code` 请求产生 `WARN` 级请求日志、下游 panic 被 `Recover` 捕获并输出带 `tenant_code`/`user_id`/栈追踪的 `ERROR` 日志，测试代码未保留在仓库里 |
+| 2026-07-23 | 新增 §6.6 时区规范：容器/部署时区固定 `Asia/Shanghai`（+8:00），`Dockerfile` runtime stage 软链 `/etc/localtime` + `ENV TZ=Asia/Shanghai` 双保险；明确这只影响日志时间戳等"人读"展示，不改变任何持久化时间语义——落库/落 Redis 的时间戳字段必须继续显式 `.UTC()` | 用户要求部署 Dockerfile 明确指定 +8:00 时区并定下规范；容器默认走 UTC，日志时间戳与运维本地时间对不上，排查问题时容易产生时间困惑；本条规范同时划清边界，避免"设了容器时区"被误解为"以后存储时间可以不用 UTC 了"，与 `internal/memory/shortterm/store.go` 已有的 `time.Now().UTC()` 写法保持一致 |
 
 > 后续每次做出影响架构方向的决策（例如：是否上多 Agent、是否切换模型供应商权重、是否引入向量库），都在此表追加一行，写清楚"是什么"和"为什么"。
 

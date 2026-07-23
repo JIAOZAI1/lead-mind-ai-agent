@@ -25,10 +25,13 @@ type chatResponse struct {
 
 // Chat handles POST /ai-agent/v1/chat: it runs the request message
 // through a ReAct agent, using and persisting session-scoped conversation
-// history (internal/memory/shortterm), and registering/touching the
+// history (internal/memory/shortterm), registering/touching the
 // session's durable metadata (internal/session) so it shows up in the
 // session list (GET /ai-agent/v1/sessions) even past the short-term
-// memory TTL.
+// memory TTL, and appending the turn's raw messages to the durable,
+// uncompacted transcript (internal/memory/transcript) so a caller can
+// page back through full conversation content past the short-term TTL
+// via GET /ai-agent/v1/sessions/{id}/messages.
 func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -89,10 +92,15 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newHistory := append(history, pkgschema.FromEinoMessage(schema.UserMessage(req.Message)), pkgschema.FromEinoMessage(reply))
+	newTurns := []pkgschema.Message{pkgschema.FromEinoMessage(schema.UserMessage(req.Message)), pkgschema.FromEinoMessage(reply)}
+	newHistory := append(history, newTurns...)
 	compacted := memory.Compact(ctx, d.Compaction, newHistory)
 	if err := d.ShortTerm.ReplaceHistory(ctx, id.TenantCode, sessionID, compacted); err != nil {
 		httpError(ctx, w, r, err, "failed to persist conversation history", http.StatusInternalServerError)
+		return
+	}
+	if err := d.Transcript.AppendTurns(ctx, id.TenantCode, id.UserID, sessionID, newTurns); err != nil {
+		httpError(ctx, w, r, err, "failed to persist conversation transcript", http.StatusInternalServerError)
 		return
 	}
 

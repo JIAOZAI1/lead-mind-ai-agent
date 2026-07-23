@@ -9,6 +9,7 @@ import (
 
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/identity"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/session"
+	pkgschema "github.com/JIAOZAI1/lead-mind-ai-agent/pkg/schema"
 )
 
 type sessionResponse struct {
@@ -129,8 +130,71 @@ func (d AgentDeps) PatchSession(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(toSessionResponse(sess))
 }
 
+type sessionMessageResponse struct {
+	Role       pkgschema.Role       `json:"role"`
+	Content    string               `json:"content"`
+	ToolCalls  []pkgschema.ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string               `json:"tool_call_id,omitempty"`
+	ToolName   string               `json:"tool_name,omitempty"`
+	CreatedAt  string               `json:"created_at"`
+}
+
+// GetSessionMessages handles GET /ai-agent/v1/sessions/{id}/messages,
+// returning the session's full durable conversation transcript
+// (internal/memory/transcript) in chronological order — unlike the
+// short-term Redis history used to drive the agent, this is not
+// TTL-bounded, so it's what backs a client reopening an old session to
+// read past conversation content.
+func (d AgentDeps) GetSessionMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+	id, _ := identity.FromContext(ctx)
+	sessionID := r.PathValue("id")
+
+	owned, err := d.ownsSession(ctx, id.TenantCode, id.UserID, sessionID)
+	if err != nil {
+		httpError(ctx, w, r, err, "failed to look up session", http.StatusInternalServerError)
+		return
+	}
+	if !owned {
+		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+		return
+	}
+
+	turns, err := d.Transcript.ListTurns(ctx, id.TenantCode, sessionID)
+	if err != nil {
+		httpError(ctx, w, r, err, "failed to load session transcript", http.StatusInternalServerError)
+		return
+	}
+
+	out := make([]sessionMessageResponse, len(turns))
+	for i, t := range turns {
+		out[i] = sessionMessageResponse{
+			Role:       t.Message.Role,
+			Content:    t.Message.Content,
+			ToolCalls:  t.Message.ToolCalls,
+			ToolCallID: t.Message.ToolCallID,
+			ToolName:   t.Message.ToolName,
+			CreatedAt:  t.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
 // DeleteSession handles DELETE /ai-agent/v1/sessions/{id}: it removes the
 // session's metadata and clears any not-yet-expired short-term history.
+// The durable transcript (internal/memory/transcript) is deliberately
+// left in place — this is a product decision, not an oversight: deleting
+// the session record makes it disappear from the session list and makes
+// GetSessionMessages 404 (ownsSession requires the metadata row), but the
+// underlying transcript rows are kept for audit/compliance purposes and
+// are not reachable through this API once their owning session is gone.
 func (d AgentDeps) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)

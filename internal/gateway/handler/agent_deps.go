@@ -11,6 +11,7 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/longterm"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/shortterm"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/transcript"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/session"
 )
 
@@ -32,6 +33,7 @@ type AgentDeps struct {
 	Sessions   session.Store
 	ShortTerm  shortterm.Store
 	LongTerm   longterm.Store
+	Transcript transcript.Store
 	Compaction memory.CompactionConfig
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/longterm"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/shortterm"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/transcript"
 	modelcfg "github.com/JIAOZAI1/lead-mind-ai-agent/internal/model"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/model/provider"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/session"
@@ -86,6 +87,7 @@ func main() {
 
 	sessionStore := session.NewMySQLStore(registry)
 	longTermStore := longterm.NewMySQLStore(registry)
+	transcriptStore := transcript.NewMySQLStore(registry)
 
 	compactionCfg := memory.DefaultCompactionConfig(chatModel)
 
@@ -95,6 +97,7 @@ func main() {
 		Sessions:   sessionStore,
 		ShortTerm:  shortTermStore,
 		LongTerm:   longTermStore,
+		Transcript: transcriptStore,
 		Compaction: compactionCfg,
 	}
 

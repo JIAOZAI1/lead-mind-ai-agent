@@ -29,7 +29,8 @@ type streamDeltaEvent struct {
 // ChatStream handles GET /ai-agent/v1/chat/stream?message=...&session_id=...
 // over SSE, streaming the ReAct agent's content deltas as they're
 // generated. Like Chat, it loads/persists session-scoped conversation
-// history and registers/touches session metadata; unlike Chat, the
+// history, registers/touches session metadata, and appends the turn to
+// the durable transcript; unlike Chat, the
 // session_id is communicated via a dedicated first SSE frame rather than
 // a JSON response body field. Tool-call intermediate steps are not
 // surfaced to the client yet — only the final assistant message stream
@@ -142,10 +143,11 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	newHistory := append(history,
+	newTurns := []pkgschema.Message{
 		pkgschema.FromEinoMessage(schema.UserMessage(message)),
-		pkgschema.Message{Role: pkgschema.RoleAssistant, Content: reply.String()},
-	)
+		{Role: pkgschema.RoleAssistant, Content: reply.String()},
+	}
+	newHistory := append(history, newTurns...)
 	compacted := memory.Compact(ctx, d.Compaction, newHistory)
 	if err := d.ShortTerm.ReplaceHistory(ctx, id.TenantCode, sessionID, compacted); err != nil {
 		slog.Error("chat stream error",
@@ -157,6 +159,20 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 			"error", err,
 		)
 		data, _ := json.Marshal(map[string]string{"error": "failed to persist conversation history"})
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
+		flusher.Flush()
+		return
+	}
+	if err := d.Transcript.AppendTurns(ctx, id.TenantCode, id.UserID, sessionID, newTurns); err != nil {
+		slog.Error("chat stream error",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"tenant_code", id.TenantCode,
+			"user_id", id.UserID,
+			"session_id", sessionID,
+			"error", err,
+		)
+		data, _ := json.Marshal(map[string]string{"error": "failed to persist conversation transcript"})
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
 		flusher.Flush()
 		return

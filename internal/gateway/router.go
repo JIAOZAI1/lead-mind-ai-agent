@@ -28,6 +28,7 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 	tenantScoped.HandleFunc("POST /ai-agent/v1/chat", deps.Chat)
 	tenantScoped.HandleFunc("GET /ai-agent/v1/chat/stream", deps.ChatStream)
 	tenantScoped.HandleFunc("GET /ai-agent/v1/sessions", deps.ListSessions)
+	tenantScoped.HandleFunc("GET /ai-agent/v1/sessions/{id}/messages", deps.GetSessionMessages)
 	tenantScoped.HandleFunc("PATCH /ai-agent/v1/sessions/{id}", deps.PatchSession)
 	tenantScoped.HandleFunc("DELETE /ai-agent/v1/sessions/{id}", deps.DeleteSession)
 	// Recover and Logging wrap WithIdentity from the outside — ahead of
