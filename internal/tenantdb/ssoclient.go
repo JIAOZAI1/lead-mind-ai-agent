@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -58,7 +59,11 @@ func (c *SSOClient) FetchDBInfo(ctx context.Context, tenantCode string) (DBInfo,
 	defer cancel()
 
 	url := fmt.Sprintf("%s/internal/tenants/%s/db-info", c.baseURL, tenantCode)
+	log.Printf("fetching db-info for tenant %s from url: %s", tenantCode, url)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	log.Printf("building db-info request for tenant %s", tenantCode)
+
 	if err != nil {
 		return DBInfo{}, fmt.Errorf("build db-info request: %w", err)
 	}
