@@ -1,8 +1,7 @@
-// Package model configures the ChatModel used by the Agent orchestration
-// layer. Per PROJECT.md §1.3, the primary provider is a domestic model
-// reached through an OpenAI-compatible endpoint (base_url/api_key
-// configurable), with an overseas fallback chain to be added later
-// (PROJECT.md §5 阶段三).
+// Package model 配置 Agent 编排层所使用的 ChatModel。根据 PROJECT.md
+// §1.3，主用模型是通过 OpenAI 兼容协议接入的国内模型
+// （base_url/api_key 可配置），海外备用链路后续再补充
+// （PROJECT.md §5 阶段三）。
 package model
 
 import (
@@ -10,19 +9,19 @@ import (
 	"os"
 )
 
-// Config holds the settings for the primary ChatModel provider.
+// Config 保存主用 ChatModel 供应商的配置。
 type Config struct {
-	// BaseURL is the OpenAI-compatible API endpoint, e.g. a domestic
-	// provider's compatible-mode URL (Doubao/Ark, Qwen/DashScope, etc.).
+	// BaseURL 是 OpenAI 兼容协议的 API 地址，例如国内某供应商的兼容模式
+	// URL（豆包/Ark、通义千问/DashScope 等）。
 	BaseURL string
-	// APIKey authenticates against BaseURL.
+	// APIKey 用于访问 BaseURL 的鉴权凭证。
 	APIKey string
-	// ModelName is the model identifier passed to the provider.
+	// ModelName 是传给供应商的模型标识。
 	ModelName string
 }
 
-// ConfigFromEnv reads the primary model config from environment variables:
-// MODEL_BASE_URL, MODEL_API_KEY, MODEL_NAME.
+// ConfigFromEnv 从环境变量读取主用模型配置：
+// MODEL_BASE_URL、MODEL_API_KEY、MODEL_NAME。
 func ConfigFromEnv() (Config, error) {
 	cfg := Config{
 		BaseURL:   os.Getenv("MODEL_BASE_URL"),

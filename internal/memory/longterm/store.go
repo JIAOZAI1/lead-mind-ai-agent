@@ -1,9 +1,8 @@
-// Package longterm persists durable, cross-session facts about a user —
-// preferences and session summaries — in each tenant's MySQL database.
-// It never stores full raw conversation transcripts (that's
-// internal/memory/shortterm's job, TTL-bounded); this package is
-// explicitly not a substitute for vector-based recall, which
-// PROJECT.md defers until RAG is a validated need.
+// Package longterm 在每个租户的 MySQL 数据库中持久化保存关于用户的、
+// 跨会话的持久事实——偏好设置与会话摘要。它绝不存储完整的原始对话记录
+// （那是 internal/memory/shortterm 的职责，受 TTL 限制）；本包也明确
+// 不是基于向量检索能力的替代品，PROJECT.md 将向量检索（RAG）作为
+// 后续待验证需求，暂缓引入。
 package longterm
 
 import (
@@ -15,21 +14,20 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenantdb"
 )
 
-// FactKind distinguishes the two durable fact shapes this store holds.
+// FactKind 区分本 store 保存的两种持久事实类型。
 type FactKind string
 
 const (
-	// FactKindPreference is a named user preference (fact_key = preference
-	// name, e.g. "timezone").
+	// FactKindPreference 是一条具名的用户偏好（fact_key = 偏好名称，
+	// 例如 "timezone"）。
 	FactKindPreference FactKind = "preference"
-	// FactKindSessionSummary is a session-level summary distilled at
-	// compaction/session-end time (fact_key = source session ID, so the
-	// UNIQUE(user_id, kind, fact_key) constraint gives "one summary per
-	// session" upsert semantics for free).
+	// FactKindSessionSummary 是在压缩/会话结束时提炼出的会话级摘要
+	// （fact_key = 来源会话 ID，这样 UNIQUE(user_id, kind, fact_key)
+	// 约束天然就实现了"每个会话一条摘要"的 upsert 语义）。
 	FactKindSessionSummary FactKind = "session_summary"
 )
 
-// Fact is one durable, persisted fact about a user.
+// Fact 是一条关于用户的持久化事实记录。
 type Fact struct {
 	ID              int64
 	UserID          string
@@ -41,30 +39,29 @@ type Fact struct {
 	UpdatedAt       time.Time
 }
 
-// Store manages durable facts in a tenant's MySQL database. Every method
-// takes tenantCode explicitly and uses it only to pick which *sql.DB to
-// route to (via tenantdb.Registry) — isolation is physical (a separate
-// database per tenant), so no method filters rows by tenant_code as a
-// WHERE-clause column.
+// Store 在租户的 MySQL 数据库中管理持久化事实。每个方法都显式接收
+// tenantCode，且仅用它来选择路由到哪个 *sql.DB（通过
+// tenantdb.Registry）——隔离是物理层面的（每个租户独立数据库），
+// 因此没有任何方法会把 tenant_code 作为 WHERE 条件列来过滤行。
 type Store interface {
-	// UpsertFact writes or updates a fact. For FactKindPreference with a
-	// non-empty Key, this upserts by (user_id, kind, key). For
-	// FactKindSessionSummary, Key must be the source session ID so the
-	// same unique constraint gives one-row-per-session semantics.
+	// UpsertFact 写入或更新一条事实。对于 Key 非空的 FactKindPreference，
+	// 按 (user_id, kind, key) 做 upsert；对于 FactKindSessionSummary，
+	// Key 必须是来源会话 ID，这样同一个唯一约束就能实现"每会话一行"
+	// 的语义。
 	UpsertFact(ctx context.Context, tenantCode string, fact Fact) error
 
-	// ListFacts returns a user's durable facts, optionally filtered by
-	// kind (pass "" for all kinds).
+	// ListFacts 返回某个用户的持久化事实，可选按 kind 过滤（传 ""
+	// 表示不限类型）。
 	ListFacts(ctx context.Context, tenantCode, userID string, kind FactKind) ([]Fact, error)
 }
 
-// MySQLStore is a Store backed by each tenant's own MySQL database,
-// reached exclusively through registry per PROJECT.md §6.2.
+// MySQLStore 是一个基于每个租户自有 MySQL 数据库实现的 Store，根据
+// PROJECT.md §6.2，一律通过 registry 获取连接。
 type MySQLStore struct {
 	registry *tenantdb.Registry
 }
 
-// NewMySQLStore builds a Store that resolves connections via registry.
+// NewMySQLStore 构建一个通过 registry 解析连接的 Store。
 func NewMySQLStore(registry *tenantdb.Registry) *MySQLStore {
 	return &MySQLStore{registry: registry}
 }

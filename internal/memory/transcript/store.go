@@ -1,11 +1,10 @@
-// Package transcript persists the full, unabridged conversation
-// transcript for a session in each tenant's MySQL database, with no TTL
-// and no compaction — unlike internal/memory/shortterm (Redis,
-// TTL-bounded) and internal/memory/compaction.go (summarizes/drops older
-// turns for the model's context window), this package is the durable
-// record a user can page back through from the session list, independent
-// of how long ago the conversation happened. It is append-only: turns are
-// never rewritten or summarized in place.
+// Package transcript 在每个租户的 MySQL 数据库中持久化保存一个会话
+// 完整、未删减的对话记录，不设 TTL、不做压缩——不同于
+// internal/memory/shortterm（Redis，受 TTL 限制）和
+// internal/memory/compaction.go（为了模型上下文窗口而对较早轮次做
+// 摘要/丢弃），本包是用户可以从会话列表中一直翻回去查看的持久化记录，
+// 与对话发生的时间无关。它是只追加（append-only）的：轮次一旦写入
+// 便不会被就地改写或摘要。
 package transcript
 
 import (
@@ -19,7 +18,7 @@ import (
 	pkgschema "github.com/JIAOZAI1/lead-mind-ai-agent/pkg/schema"
 )
 
-// Turn is one persisted message in a session's durable transcript.
+// Turn 是会话持久化记录中的一条消息。
 type Turn struct {
 	SessionID string
 	UserID    string
@@ -27,27 +26,26 @@ type Turn struct {
 	CreatedAt time.Time
 }
 
-// Store appends to and reads back a session's durable transcript.
+// Store 负责追加写入并读取一个会话的持久化对话记录。
 type Store interface {
-	// AppendTurns durably records new turns for (tenant, session), in
-	// the given order. Callers pass only the newly produced turns for
-	// this request, not the full accumulated history — this store is
-	// append-only and never rewritten, unlike shortterm.Store.
+	// AppendTurns 按给定顺序持久化记录 (tenant, session) 的新增轮次。
+	// 调用方只需传入本次请求新产生的轮次，而不是完整的累积历史——本
+	// store 是只追加的，写入后不会被改写，这一点与 shortterm.Store
+	// 不同。
 	AppendTurns(ctx context.Context, tenantCode, userID, sessionID string, turns []pkgschema.Message) error
 
-	// ListTurns returns every persisted turn for (tenant, session) in
-	// chronological order, or an empty slice if none exist yet.
+	// ListTurns 按时间顺序返回 (tenant, session) 已持久化的全部轮次；
+	// 如果还没有任何记录，返回空切片。
 	ListTurns(ctx context.Context, tenantCode, sessionID string) ([]Turn, error)
 }
 
-// MySQLStore is a Store backed by each tenant's own MySQL database,
-// reached exclusively through registry — never a direct connection
-// string — per PROJECT.md §6.2.
+// MySQLStore 是一个基于每个租户自有 MySQL 数据库实现的 Store，根据
+// PROJECT.md §6.2，一律通过 registry 获取连接——绝不使用直连字符串。
 type MySQLStore struct {
 	registry *tenantdb.Registry
 }
 
-// NewMySQLStore builds a Store that resolves connections via registry.
+// NewMySQLStore 构建一个通过 registry 解析连接的 Store。
 func NewMySQLStore(registry *tenantdb.Registry) *MySQLStore {
 	return &MySQLStore{registry: registry}
 }

@@ -6,9 +6,9 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/identity"
 )
 
-// Headers carrying caller identity, injected upstream (API
-// gateway/auth proxy) ahead of this service. This service trusts them as
-// given — it does not authenticate the caller itself.
+// 携带调用方身份信息的请求头，由本服务上游（API 网关/认证代理）在到达
+// 本服务之前注入。本服务对这些请求头的内容全盘信任——它自己不做任何
+// 调用方认证。
 const (
 	TenantCodeHeader = "X-Tenant-Code"
 	UserIDHeader     = "X-User-Id"
@@ -16,11 +16,10 @@ const (
 	UserRolesHeader  = "X-User-Roles"
 )
 
-// WithIdentity reads the identity headers off the request and attaches
-// them to the request context. X-Tenant-Code is required — without it
-// there is no tenant to route to, so the request is rejected. The user
-// headers (X-User-Id/X-Username/X-User-Roles) are informational and not
-// required, since some internal/system callers may carry only a tenant.
+// WithIdentity 从请求中读取身份相关请求头，并将其附加到请求的 context
+// 上。X-Tenant-Code 是必填的——没有它就无法确定路由到哪个租户，因此
+// 该请求会被拒绝。用户相关请求头（X-User-Id/X-Username/X-User-Roles）
+// 属于信息性字段，非必填，因为某些内部/系统调用方可能只携带租户信息。
 func WithIdentity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tenantCode := r.Header.Get(TenantCodeHeader)

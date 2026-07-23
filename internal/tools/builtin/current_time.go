@@ -1,7 +1,6 @@
-// Package builtin holds tools shipped with the platform, available to
-// every tenant's Agent without extra configuration. Custom/tenant-defined
-// tools (webhook-based) live under internal/tools instead — see
-// PROJECT.md §1.2.
+// Package builtin 存放随平台内置、无需额外配置即可被每个租户的 Agent
+// 使用的工具。自定义/租户配置的工具（基于 webhook）则放在
+// internal/tools 下——参见 PROJECT.md §1.2。
 package builtin
 
 import (
@@ -13,7 +12,7 @@ import (
 )
 
 type currentTimeInput struct {
-	// Timezone is an IANA timezone name, e.g. "Asia/Shanghai". Empty means UTC.
+	// Timezone 是 IANA 时区名称，例如 "Asia/Shanghai"。为空表示 UTC。
 	Timezone string `json:"timezone" jsonschema:"description=IANA timezone name (e.g. Asia/Shanghai). Defaults to UTC if omitted."`
 }
 
@@ -21,9 +20,9 @@ type currentTimeOutput struct {
 	Now string `json:"now"`
 }
 
-// NewCurrentTimeTool returns a tool that reports the current time in a
-// given timezone. It has no side effects, so it never needs approval
-// routing (PROJECT.md §4.1/§6.2 only applies to high-risk tools).
+// NewCurrentTimeTool 返回一个用于查询指定时区当前时间的工具。它没有任何
+// 副作用，因此永远不需要走审批路由（PROJECT.md §4.1/§6.2 的审批要求仅
+// 针对高风险工具）。
 func NewCurrentTimeTool() (tool.InvokableTool, error) {
 	return utils.InferTool(
 		"current_time",

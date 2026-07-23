@@ -6,15 +6,14 @@ import (
 	"runtime/debug"
 )
 
-// Recover catches panics from downstream handlers, logs them with a
-// stack trace via slog (tagged with tenant/path like every other log
-// line here, unlike Go's default per-connection recovery which writes an
-// untagged raw stack trace straight to os.Stderr), and returns a 500
-// instead of letting the panic take down the request's goroutine
-// silently. Must wrap every handler chain, since an unrecovered panic
-// also skips Logging's post-handler log line entirely. Identity is read
-// directly off request headers (see Logging's doc comment for why) so
-// this works regardless of nesting order relative to WithIdentity.
+// Recover 捕获下游 handler 抛出的 panic，通过 slog 记录带堆栈信息的
+// 日志（与本文件其他日志一样打上 tenant/path 标签，不同于 Go 默认的
+// 按连接级别恢复机制——那种方式会把不带标签的原始堆栈直接写到
+// os.Stderr），并返回 500，而不是让 panic 悄无声息地拖垮该请求的
+// goroutine。必须包裹每一条 handler 调用链，因为一个未被捕获的
+// panic 也会导致 Logging 的请求结束日志完全不会被打印。身份信息直接
+// 从请求头读取（原因见 Logging 的文档注释），因此无论相对于
+// WithIdentity 的嵌套顺序如何，这里都能正常工作。
 func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

@@ -1,7 +1,6 @@
-// Package react wraps Eino's ReAct agent flow with this project's
-// defaults. See enterprise-ai-agent-design.md §3.2 for the reference
-// pattern and PROJECT.md §5 阶段一 for scope (single ReAct agent, no
-// multi-agent orchestration yet).
+// Package react 在 Eino 的 ReAct agent 流程之上封装本项目的默认配置。
+// 参考模式见 enterprise-ai-agent-design.md §3.2，范围界定见
+// PROJECT.md §5 阶段一（单个 ReAct agent，暂不做多 agent 编排）。
 package react
 
 import (
@@ -15,35 +14,34 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// defaultMaxStep bounds the tool-call loop so a misbehaving tool or model
-// can't spin forever. PROJECT.md §6.1 requires timeouts on all external
-// calls; this is the equivalent guard for the agent's step budget.
-// See enterprise-ai-agent-design.md §3.2: recommended range is 8~15.
+// defaultMaxStep 限制工具调用循环的步数，防止一个行为异常的工具或模型
+// 无限循环下去。PROJECT.md §6.1 要求所有外部调用都必须有超时控制，这
+// 里是针对 agent 步数预算的等价保护措施。参见
+// enterprise-ai-agent-design.md §3.2：推荐取值范围是 8~15。
 const defaultMaxStep = 12
 
-// Config configures the platform's default ReAct agent.
+// Config 配置平台默认的 ReAct agent。
 type Config struct {
-	// ChatModel is the tool-calling model backing the agent (see
-	// internal/model/provider).
+	// ChatModel 是驱动该 agent 的支持工具调用的模型（参见
+	// internal/model/provider）。
 	ChatModel model.ToolCallingChatModel
-	// Tools are the tools available to the agent for this run. Callers
-	// assemble this per-tenant (builtin + tenant-configured tools).
+	// Tools 是本次运行 agent 可使用的工具集。调用方按租户组装
+	// （内置工具 + 租户自定义工具）。
 	Tools []tool.BaseTool
-	// SystemPrompt, if set, is prepended as a system message on every
-	// call. Tenant/Agent-level customization point (PROJECT.md §1.2).
+	// SystemPrompt 如果设置，会在每次调用时作为 system 消息前置插入。
+	// 这是租户/Agent 级别的定制点（PROJECT.md §1.2）。
 	SystemPrompt string
-	// MaxStep overrides defaultMaxStep when non-zero.
+	// MaxStep 非零时会覆盖 defaultMaxStep。
 	MaxStep int
-	// MessageRewriter, if set, is applied to the accumulated message
-	// history before ChatModel is called — this repo's context-window
-	// compaction hook (see internal/memory.NewMessageRewriter). It runs
-	// before SystemPrompt injection (Eino calls MessageRewriter ahead of
-	// MessageModifier), so it never needs to special-case stripping the
-	// system message.
+	// MessageRewriter 如果设置，会在调用 ChatModel 之前应用到累积的
+	// 消息历史上——这是本仓库的上下文窗口压缩钩子（参见
+	// internal/memory.NewMessageRewriter）。它先于 SystemPrompt 的注入
+	// 执行（Eino 会先调用 MessageRewriter 再调用 MessageModifier），
+	// 因此它永远不需要专门处理"剥离 system 消息"这种特殊情况。
 	MessageRewriter react.MessageModifier
 }
 
-// New builds a ReAct agent from cfg.
+// New 根据 cfg 构建一个 ReAct agent。
 func New(ctx context.Context, cfg Config) (*react.Agent, error) {
 	if cfg.ChatModel == nil {
 		return nil, fmt.Errorf("react agent: ChatModel is required")
@@ -73,9 +71,9 @@ func New(ctx context.Context, cfg Config) (*react.Agent, error) {
 		}
 	}
 
-	a, err := react.NewAgent(ctx, agentCfg)
+	agent, err := react.NewAgent(ctx, agentCfg)
 	if err != nil {
 		return nil, fmt.Errorf("build react agent: %w", err)
 	}
-	return a, nil
+	return agent, nil
 }

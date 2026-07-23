@@ -23,15 +23,13 @@ type chatResponse struct {
 	Reply      string `json:"reply"`
 }
 
-// Chat handles POST /ai-agent/v1/chat: it runs the request message
-// through a ReAct agent, using and persisting session-scoped conversation
-// history (internal/memory/shortterm), registering/touching the
-// session's durable metadata (internal/session) so it shows up in the
-// session list (GET /ai-agent/v1/sessions) even past the short-term
-// memory TTL, and appending the turn's raw messages to the durable,
-// uncompacted transcript (internal/memory/transcript) so a caller can
-// page back through full conversation content past the short-term TTL
-// via GET /ai-agent/v1/sessions/{id}/messages.
+// Chat 处理 POST /ai-agent/v1/chat：将请求消息交给 ReAct agent 处理，
+// 读取并持久化会话级对话历史（internal/memory/shortterm），
+// 注册/刷新会话的持久化元数据（internal/session），使其即便在短期记忆
+// TTL 过期后依然出现在会话列表（GET /ai-agent/v1/sessions）中；同时将
+// 本轮原始消息追加写入持久化、不压缩的完整记录
+// （internal/memory/transcript），以便调用方在短期 TTL 过期后仍可通过
+// GET /ai-agent/v1/sessions/{id}/messages 翻阅完整对话内容。
 func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -70,14 +68,14 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 
 	history, err := d.ShortTerm.LoadHistory(ctx, id.TenantCode, sessionID)
 	if err != nil {
-		// Fail closed rather than silently degrading to a stateless
-		// reply: a reply that looks normal but has silently lost prior
-		// context is harder to notice and debug than an explicit error.
+		// 这里选择直接失败，而不是静默降级为无上下文的回复：一个看似
+		// 正常、实际却悄悄丢失了历史上下文的回复，比一个明确的错误更
+		// 难被发现和排查。
 		httpError(ctx, w, r, err, "failed to load conversation history", http.StatusInternalServerError)
 		return
 	}
 
-	a, err := d.newAgent(ctx)
+	agent, err := d.newAgent(ctx)
 	if err != nil {
 		httpError(ctx, w, r, err, "agent unavailable", http.StatusInternalServerError)
 		return
@@ -86,7 +84,7 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 	input := pkgschema.ToEinoMessages(history)
 	input = append(input, schema.UserMessage(req.Message))
 
-	reply, err := a.Generate(ctx, input)
+	reply, err := agent.Generate(ctx, input)
 	if err != nil {
 		httpError(ctx, w, r, err, "agent generation failed", http.StatusBadGateway)
 		return
@@ -112,10 +110,9 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// defaultTitle derives a cheap default session title from the first
-// user message, truncated rather than model-summarized — see
-// PROJECT.md decision log: AI-generated titles are an out-of-scope
-// follow-up, not this feature's job.
+// defaultTitle 从首条用户消息中派生一个低成本的默认会话标题，采用截断
+// 而非模型摘要——参见 PROJECT.md 决策记录：AI 生成标题是范围之外的
+// 后续需求，不是本功能的职责。
 func defaultTitle(message string) string {
 	const maxLen = 20
 	runes := []rune(message)

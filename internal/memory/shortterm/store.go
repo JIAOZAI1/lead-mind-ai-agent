@@ -1,7 +1,6 @@
-// Package shortterm holds a session's raw conversation history in Redis,
-// TTL-bounded and tenant-scoped. Long-term durable facts/preferences live
-// in internal/memory/longterm instead — this package never persists past
-// its TTL.
+// Package shortterm 在 Redis 中保存会话的原始对话历史，按租户隔离且
+// 受 TTL 限制。长期持久的事实/偏好则保存在 internal/memory/longterm
+// 中——本包的数据绝不会存活超过其 TTL。
 package shortterm
 
 import (
@@ -15,35 +14,34 @@ import (
 	pkgschema "github.com/JIAOZAI1/lead-mind-ai-agent/pkg/schema"
 )
 
-// Store persists a session's turn-by-turn message history.
+// Store 持久化保存一个会话逐轮次的消息历史。
 type Store interface {
-	// LoadHistory returns the persisted turns for (tenant, session) in
-	// chronological order, or an empty slice if none exist yet — a
-	// fresh or TTL-expired session is not an error case.
+	// LoadHistory 按时间顺序返回 (tenant, session) 已保存的轮次；
+	// 如果还没有任何记录，返回空切片——一个全新会话或 TTL 已过期的
+	// 会话不属于错误情形。
 	LoadHistory(ctx context.Context, tenantCode, sessionID string) ([]pkgschema.Message, error)
 
-	// AppendTurns appends new turns and refreshes the TTL.
+	// AppendTurns 追加新的轮次并刷新 TTL。
 	AppendTurns(ctx context.Context, tenantCode, userID, sessionID string, turns []pkgschema.Message) error
 
-	// ReplaceHistory overwrites the stored history wholesale (used by
-	// the compaction path to atomically swap in a summarized+windowed
-	// history in place of ever-growing raw turns) and refreshes the TTL.
+	// ReplaceHistory 整体覆盖已存储的历史记录（供压缩流程使用，将
+	// 不断增长的原始轮次原子性地替换为摘要+窗口化后的历史）并刷新
+	// TTL。
 	ReplaceHistory(ctx context.Context, tenantCode, sessionID string, turns []pkgschema.Message) error
 
-	// Reset clears a session's history entirely (e.g. on session
-	// deletion).
+	// Reset 彻底清空一个会话的历史记录（例如在会话被删除时使用）。
 	Reset(ctx context.Context, tenantCode, sessionID string) error
 }
 
-// RedisStore is a Store backed by Redis. Keys are prefixed
-// tenant:{tenant_code}:... per PROJECT.md §4.3/§6.2.
+// RedisStore 是一个基于 Redis 实现的 Store。根据 PROJECT.md §4.3/§6.2，
+// key 统一以 tenant:{tenant_code}:... 为前缀。
 type RedisStore struct {
 	client *redis.Client
 	ttl    time.Duration
 }
 
-// NewRedisStore builds a Store using client, with ttl applied (and
-// refreshed on every write) to each session's keys.
+// NewRedisStore 使用 client 构建一个 Store，ttl 会应用到每个会话的
+// key 上（并在每次写入时刷新）。
 func NewRedisStore(client *redis.Client, ttl time.Duration) *RedisStore {
 	return &RedisStore{client: client, ttl: ttl}
 }

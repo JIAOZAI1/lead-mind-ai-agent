@@ -15,16 +15,15 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/session"
 )
 
-// AgentDeps holds the shared, expensive-to-build resources the chat
-// handlers need to construct a per-request ReAct agent and to read/write
-// conversation memory: the ChatModel connection, the tool set, and the
-// session/short-term/long-term memory stores. It is built once at
-// startup (see cmd/server/main.go) and injected into the handlers.
+// AgentDeps 保存 chat handler 构建单次请求 ReAct agent、以及读写对话
+// 记忆所需的、构建成本较高的共享资源：ChatModel 连接、工具集，以及
+// 会话/短期/长期记忆的 store。它在启动时构建一次（参见
+// cmd/server/main.go），并注入到各个 handler 中。
 //
-// A new react.Agent is built per request rather than shared, since
-// AgentConfig (system prompt, tool set) is expected to become
-// per-tenant once tenant-configured agents land (PROJECT.md §1.2);
-// react.NewAgent itself is cheap (graph construction, no I/O).
+// react.Agent 按请求单独构建而不是共享，是因为 AgentConfig（system
+// prompt、工具集）预计会在租户自定义 agent 落地后变为按租户区分
+// （PROJECT.md §1.2）；而 react.NewAgent 本身构建成本很低（只是图结构
+// 构建，不涉及 I/O）。
 type AgentDeps struct {
 	ChatModel    einomodel.ToolCallingChatModel
 	Tools        []tool.BaseTool
@@ -38,7 +37,7 @@ type AgentDeps struct {
 }
 
 func (d AgentDeps) newAgent(ctx context.Context) (*einoreact.Agent, error) {
-	a, err := react.New(ctx, react.Config{
+	agent, err := react.New(ctx, react.Config{
 		ChatModel:       d.ChatModel,
 		Tools:           d.Tools,
 		SystemPrompt:    d.SystemPrompt,
@@ -47,5 +46,5 @@ func (d AgentDeps) newAgent(ctx context.Context) (*einoreact.Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	return a, nil
+	return agent, nil
 }

@@ -26,16 +26,15 @@ type streamDeltaEvent struct {
 	Delta      string `json:"delta"`
 }
 
-// ChatStream handles GET /ai-agent/v1/chat/stream?message=...&session_id=...
-// over SSE, streaming the ReAct agent's content deltas as they're
-// generated. Like Chat, it loads/persists session-scoped conversation
-// history, registers/touches session metadata, and appends the turn to
-// the durable transcript; unlike Chat, the
-// session_id is communicated via a dedicated first SSE frame rather than
-// a JSON response body field. Tool-call intermediate steps are not
-// surfaced to the client yet — only the final assistant message stream
-// (see internal/agent/react.New, which does not yet distinguish tool-call
-// chunks from content chunks for the caller).
+// ChatStream 通过 SSE 处理
+// GET /ai-agent/v1/chat/stream?message=...&session_id=...，将 ReAct
+// agent 生成的内容增量实时流式返回。与 Chat 类似，本接口也会
+// 加载/持久化会话级对话历史、注册/刷新会话元数据、并将本轮内容追加
+// 写入持久化记录；与 Chat 不同的是，session_id 是通过专门的第一帧
+// SSE 事件传递的，而不是 JSON 响应体中的字段。工具调用的中间步骤
+// 目前还不会展示给客户端——只有最终的 assistant 消息内容会被流式
+// 输出（参见 internal/agent/react.New，它目前尚未对调用方区分工具
+// 调用的数据块和内容数据块）。
 func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 	message := r.URL.Query().Get("message")
 	if message == "" {
@@ -76,7 +75,7 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a, err := d.newAgent(ctx)
+	agent, err := d.newAgent(ctx)
 	if err != nil {
 		httpError(ctx, w, r, err, "agent unavailable", http.StatusInternalServerError)
 		return
@@ -85,7 +84,7 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 	input := pkgschema.ToEinoMessages(history)
 	input = append(input, schema.UserMessage(message))
 
-	stream, err := a.Stream(ctx, input)
+	stream, err := agent.Stream(ctx, input)
 	if err != nil {
 		httpError(ctx, w, r, err, "agent stream failed", http.StatusBadGateway)
 		return
@@ -95,7 +94,7 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no") // disable nginx buffering for SSE
+	w.Header().Set("X-Accel-Buffering", "no") // 关闭 nginx 对 SSE 的缓冲
 
 	sessionData, _ := json.Marshal(streamSessionEvent{SessionID: sessionID})
 	fmt.Fprintf(w, "event: session\ndata: %s\n\n", sessionData)
@@ -115,11 +114,10 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			// Headers (200) are already flushed at this point, so the
-			// error can only go out as an SSE frame — but that leaves no
-			// server-side trace unless logged explicitly here, since the
-			// wrapping middleware.Logging will record this request as a
-			// plain 200.
+			// 此时响应头（200）已经被 flush 出去了，所以错误只能通过
+			// SSE 帧发送——但如果这里不显式记录日志，就不会留下任何
+			// 服务端痕迹，因为外层的 middleware.Logging 只会把这个
+			// 请求记录成普通的 200。
 			slog.Error("chat stream error",
 				"method", r.Method,
 				"path", r.URL.Path,

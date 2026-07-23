@@ -38,11 +38,10 @@ type sessionPatchRequest struct {
 	Archived *bool   `json:"archived"`
 }
 
-// ListSessions handles GET /ai-agent/v1/sessions?include_archived=false,
-// returning the caller's own session list — metadata only (title,
-// pinned/archived, timestamps), never conversation content (see
-// internal/memory/shortterm for that, which is TTL-bounded independent of
-// this list).
+// ListSessions 处理 GET /ai-agent/v1/sessions?include_archived=false，
+// 返回调用方自己的会话列表——只包含元数据（标题、置顶/归档状态、
+// 时间戳），绝不包含对话内容（对话内容见 internal/memory/shortterm，
+// 其 TTL 与本列表的生命周期相互独立）。
 func (d AgentDeps) ListSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -69,8 +68,8 @@ func (d AgentDeps) ListSessions(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// PatchSession handles PATCH /ai-agent/v1/sessions/{id}, supporting
-// partial updates to title/pinned/archived.
+// PatchSession 处理 PATCH /ai-agent/v1/sessions/{id}，支持对
+// title/pinned/archived 做部分字段更新。
 func (d AgentDeps) PatchSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -139,12 +138,11 @@ type sessionMessageResponse struct {
 	CreatedAt  string               `json:"created_at"`
 }
 
-// GetSessionMessages handles GET /ai-agent/v1/sessions/{id}/messages,
-// returning the session's full durable conversation transcript
-// (internal/memory/transcript) in chronological order — unlike the
-// short-term Redis history used to drive the agent, this is not
-// TTL-bounded, so it's what backs a client reopening an old session to
-// read past conversation content.
+// GetSessionMessages 处理 GET /ai-agent/v1/sessions/{id}/messages，
+// 按时间顺序返回该会话完整的持久化对话记录
+// （internal/memory/transcript）——不同于驱动 agent 的短期 Redis
+// 历史记录，本接口的数据不受 TTL 限制，因此它是客户端重新打开一个
+// 旧会话、回看历史对话内容的数据来源。
 func (d AgentDeps) GetSessionMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -187,14 +185,13 @@ func (d AgentDeps) GetSessionMessages(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// DeleteSession handles DELETE /ai-agent/v1/sessions/{id}: it removes the
-// session's metadata and clears any not-yet-expired short-term history.
-// The durable transcript (internal/memory/transcript) is deliberately
-// left in place — this is a product decision, not an oversight: deleting
-// the session record makes it disappear from the session list and makes
-// GetSessionMessages 404 (ownsSession requires the metadata row), but the
-// underlying transcript rows are kept for audit/compliance purposes and
-// are not reachable through this API once their owning session is gone.
+// DeleteSession 处理 DELETE /ai-agent/v1/sessions/{id}：删除会话元数据，
+// 并清除尚未过期的短期历史记录。持久化的完整对话记录
+// （internal/memory/transcript）被刻意保留——这是一个产品决策，不是
+// 遗漏：删除会话记录会使其从会话列表中消失，并使 GetSessionMessages
+// 返回 404（ownsSession 依赖元数据行是否存在），但底层的对话记录行
+// 出于审计/合规目的仍会被保留；一旦其所属会话被删除，这些记录也就
+// 无法再通过本 API 访问到了。
 func (d AgentDeps) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -227,10 +224,9 @@ func (d AgentDeps) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ownsSession reports whether sessionID exists and belongs to userID.
-// Callers should treat "not found" and "not yours" identically (404, not
-// 403) so a caller can't distinguish "doesn't exist" from "exists but
-// isn't yours".
+// ownsSession 报告 sessionID 是否存在且属于 userID。调用方应将"不存在"
+// 和"不属于你"这两种情况一视同仁地处理（统一返回 404，而不是 403），
+// 这样调用方就无法区分"会话不存在"和"会话存在但不是你的"。
 func (d AgentDeps) ownsSession(ctx context.Context, tenantCode, userID, sessionID string) (bool, error) {
 	sess, ok, err := d.Sessions.Get(ctx, tenantCode, sessionID)
 	if err != nil {

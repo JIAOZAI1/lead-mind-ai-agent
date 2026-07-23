@@ -1,8 +1,7 @@
-// Package tenantdb provides the minimal per-tenant MySQL connection
-// routing required by internal/session and internal/memory/longterm. Per
-// PROJECT.md §4.2/§6.2, tenant DB connection info is never hardcoded or
-// statically configured — it is fetched from sso-service on demand and
-// cached, and this is the only sanctioned path to a tenant's *sql.DB.
+// Package tenantdb 提供 internal/session 与 internal/memory/longterm
+// 所需的最小化按租户 MySQL 连接路由能力。根据 PROJECT.md §4.2/§6.2，
+// 租户数据库连接信息绝不硬编码或静态配置——一律按需从 sso-service
+// 获取并缓存，本包是获取租户 *sql.DB 的唯一合法途径。
 package tenantdb
 
 import (
@@ -15,12 +14,11 @@ import (
 	"time"
 )
 
-// Header carrying the internal-call token sso-service uses to
-// distinguish cluster-internal callers from external traffic (PROJECT.md
-// §4.2).
+// internalTokenHeader 是携带内部调用 token 的请求头，sso-service 用它来
+// 区分集群内部调用方与外部流量（PROJECT.md §4.2）。
 const internalTokenHeader = "X-Internal-Token"
 
-// DBInfo is a tenant's MySQL connection info as returned by sso-service.
+// DBInfo 是 sso-service 返回的某个租户的 MySQL 连接信息。
 type DBInfo struct {
 	Host     string `json:"dbHost"`
 	Port     int    `json:"dbPort"`
@@ -29,23 +27,23 @@ type DBInfo struct {
 	Password string `json:"dbPassword"`
 }
 
-// Sentinel errors so callers can distinguish "tenant doesn't exist" from
-// "we're not authorized to ask" from generic failures.
+// 预定义的哨兵错误，方便调用方区分"租户不存在"、"没有权限查询"和其他
+// 一般性失败。
 var (
 	ErrTenantNotFound = fmt.Errorf("tenant not found")
 	ErrUnauthorized   = fmt.Errorf("unauthorized internal call")
 )
 
-// SSOClient fetches tenant DB connection info from sso-service.
+// SSOClient 用于从 sso-service 获取租户数据库连接信息。
 type SSOClient struct {
 	baseURL       string
 	internalToken string
 	httpClient    *http.Client
 }
 
-// NewSSOClient builds a client against baseURL (e.g.
-// http://sso-service.default.svc.cluster.local), authenticating internal
-// calls with internalToken.
+// NewSSOClient 基于 baseURL（例如
+// http://sso-service.default.svc.cluster.local）构建客户端，
+// internalToken 用于内部调用鉴权。
 func NewSSOClient(baseURL, internalToken string) *SSOClient {
 	return &SSOClient{
 		baseURL:       baseURL,
@@ -54,15 +52,15 @@ func NewSSOClient(baseURL, internalToken string) *SSOClient {
 	}
 }
 
-// FetchDBInfo looks up tenantCode's MySQL connection info.
+// FetchDBInfo 查询 tenantCode 对应的 MySQL 连接信息。
 func (c *SSOClient) FetchDBInfo(ctx context.Context, tenantCode string) (DBInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("%s/internal/tenants/%s/db-info", c.baseURL, tenantCode)
-	log.Printf("fetching db-info for tenant %s from url: %s", tenantCode, url)
+	reqURL := fmt.Sprintf("%s/internal/tenants/%s/db-info", c.baseURL, tenantCode)
+	log.Printf("fetching db-info for tenant %s from url: %s", tenantCode, reqURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return DBInfo{}, fmt.Errorf("build db-info request: %w", err)
 	}

@@ -14,11 +14,10 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 	applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
 
-// ApplyMigrations applies every .sql file in fsys (a per-tenant database
-// connection) that isn't already recorded in schema_migrations, in
-// filename order. This is a deliberately minimal, home-grown runner (no
-// golang-migrate or similar dependency) since the migration surface here
-// is a handful of files — see PROJECT.md §6.4.
+// ApplyMigrations 按文件名顺序，对 fsys（某个租户的数据库连接）中每一个
+// 尚未记录在 schema_migrations 里的 .sql 文件执行迁移。这是一个刻意做得
+// 很简单的自研实现（不引入 golang-migrate 之类的依赖），因为这里的迁移
+// 文件数量很少——参见 PROJECT.md §6.4。
 func ApplyMigrations(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if _, err := db.ExecContext(ctx, migrationsTable); err != nil {
 		return fmt.Errorf("create schema_migrations table: %w", err)

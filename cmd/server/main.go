@@ -27,16 +27,18 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tools/builtin"
 )
 
+// envDurationSeconds 从环境变量 name 中读取一个整数（单位：秒），转换为
+// time.Duration；如果该环境变量未设置或不是合法整数，则返回 fallback。
 func envDurationSeconds(name string, fallback time.Duration) time.Duration {
-	v := os.Getenv(name)
-	if v == "" {
+	raw := os.Getenv(name)
+	if raw == "" {
 		return fallback
 	}
-	secs, err := strconv.Atoi(v)
+	seconds, err := strconv.Atoi(raw)
 	if err != nil {
 		return fallback
 	}
-	return time.Duration(secs) * time.Second
+	return time.Duration(seconds) * time.Second
 }
 
 func main() {
@@ -85,6 +87,9 @@ func main() {
 	registry := tenantdb.NewRegistry(ssoClient, dbInfoCacheTTL, idleEvictAfter)
 	defer registry.Close()
 
+	// 三个 store 共用同一个 registry，但各自对应不同的表/键空间
+	// （会话元数据、长期记忆事实、完整对话记录）——具体职责边界与
+	// shortterm 的 TTL 限时 Redis 历史记录有何不同，参见各自包的注释说明。
 	sessionStore := session.NewMySQLStore(registry)
 	longTermStore := longterm.NewMySQLStore(registry)
 	transcriptStore := transcript.NewMySQLStore(registry)

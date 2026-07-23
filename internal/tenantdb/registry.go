@@ -11,29 +11,25 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// poolEntry pairs a live connection pool with the db-info that produced
-// it and bookkeeping used for the two independent expiries this registry
-// applies: dbInfoExpiresAt governs when we must re-ask sso-service for
-// possibly-rotated credentials, lastUsedAt governs when an idle pool (and
-// the plaintext credentials it implies keeping around) gets evicted.
+// poolEntry 将一个存活的连接池与产生它的 db-info 绑定在一起，并记录本
+// registry 所使用的两种独立过期机制所需的信息：dbInfoExpiresAt 决定何时
+// 必须重新向 sso-service 询问（凭据可能已轮换），lastUsedAt 决定一个
+// 空闲连接池（以及它随之驻留在内存中的明文凭据）何时被淘汰。
 type poolEntry struct {
 	db              *sql.DB
 	dbInfoExpiresAt time.Time
 	lastUsedAt      time.Time
 }
 
-// Registry resolves a tenant_code to a live *sql.DB, fetching connection
-// info from sso-service on first use (or after the cached info expires)
-// and caching the resulting pool. Per PROJECT.md §6.2, this is the only
-// sanctioned way for this service to obtain a tenant database connection
-// — callers must never construct one directly.
+// Registry 将 tenant_code 解析为一个存活的 *sql.DB：首次使用时（或缓存
+// 的连接信息过期后）从 sso-service 拉取连接信息，并缓存生成的连接池。
+// 根据 PROJECT.md §6.2，这是本服务获取租户数据库连接的唯一合法方式
+// ——调用方不得自行直接构造。
 //
-// Idle pools are evicted after idleEvictAfter of inactivity rather than
-// held for the process lifetime: the entry holds the tenant's plaintext
-// DB credentials in memory, so bounding how long an inactive tenant's
-// credentials stay resident bounds the blast radius of a process
-// compromise to "recently active tenants" instead of "every tenant ever
-// served".
+// 空闲连接池会在 idleEvictAfter 无活动后被淘汰，而不是在进程生命周期内
+// 一直持有：每个 entry 在内存中保存着该租户的明文数据库凭据，因此限制
+// 一个不活跃租户的凭据在内存中驻留的时长，能把进程被攻破后的影响范围
+// 限定在"近期活跃的租户"，而不是"曾经服务过的所有租户"。
 type Registry struct {
 	client         *SSOClient
 	dbInfoCacheTTL time.Duration
@@ -46,12 +42,11 @@ type Registry struct {
 	evictorDone chan struct{}
 }
 
-// NewRegistry builds a Registry. dbInfoCacheTTL bounds how long a
-// sso-service db-info lookup is trusted before being re-fetched;
-// idleEvictAfter bounds how long an unused tenant's connection pool (and
-// its cached credentials) stays resident in memory. A background
-// goroutine sweeps for idle entries every idleEvictAfter/2 (floored at
-// 1s) — call Close to stop it.
+// NewRegistry 构建一个 Registry。dbInfoCacheTTL 限定一次从 sso-service
+// 查到的 db-info 在被重新拉取之前可信任多久；idleEvictAfter 限定一个
+// 未被使用的租户连接池（及其缓存的凭据）在内存中驻留多久。后台 goroutine
+// 每隔 idleEvictAfter/2（下限 1 秒）扫描一次空闲 entry——调用 Close
+// 可停止该 goroutine。
 func NewRegistry(client *SSOClient, dbInfoCacheTTL, idleEvictAfter time.Duration) *Registry {
 	r := &Registry{
 		client:         client,
@@ -65,8 +60,8 @@ func NewRegistry(client *SSOClient, dbInfoCacheTTL, idleEvictAfter time.Duration
 	return r
 }
 
-// Get returns tenantCode's *sql.DB, dialing a new pool if none is cached
-// or the cached db-info has expired.
+// Get 返回 tenantCode 对应的 *sql.DB；如果没有缓存或缓存的 db-info
+// 已过期，则会新建一个连接池。
 func (r *Registry) Get(ctx context.Context, tenantCode string) (*sql.DB, error) {
 	now := time.Now()
 
@@ -113,7 +108,7 @@ func (r *Registry) Get(ctx context.Context, tenantCode string) (*sql.DB, error) 
 	return db, nil
 }
 
-// Close shuts down every cached pool and stops the idle evictor.
+// Close 关闭所有缓存的连接池，并停止空闲淘汰 goroutine。
 func (r *Registry) Close() error {
 	close(r.stopEvictor)
 	<-r.evictorDone

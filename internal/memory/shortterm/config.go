@@ -6,25 +6,23 @@ import (
 	"strconv"
 )
 
-// RedisConfig holds the connection settings for the short-term memory
-// Redis instance.
+// RedisConfig 保存短期记忆所用 Redis 实例的连接配置。
 type RedisConfig struct {
-	// Addr is host:port of the Redis server.
+	// Addr 是 Redis 服务器的 host:port。
 	Addr string
-	// Username authenticates against Addr (Redis 6+ ACL username; empty
-	// is valid for legacy requirepass-only setups).
+	// Username 用于对 Addr 鉴权（Redis 6+ 的 ACL 用户名；对于仅使用
+	// 传统 requirepass 的部署，留空也是合法的）。
 	Username string
-	// Password authenticates against Addr. Sourced from a Secret, never
-	// a ConfigMap (see deployments/k8s/secret.yaml).
+	// Password 用于对 Addr 鉴权，来源于 Secret，绝不来自 ConfigMap
+	// （参见 deployments/k8s/secret.yaml）。
 	Password string
-	// DB selects the logical Redis database index (0-15 by default on
-	// stock Redis).
+	// DB 选择 Redis 的逻辑数据库编号（原生 Redis 默认范围是 0-15）。
 	DB int
 }
 
-// RedisConfigFromEnv reads Redis connection settings from environment
-// variables: REDIS_ADDR (required), REDIS_USERNAME, REDIS_PASSWORD,
-// REDIS_DB (defaults to 0 if unset or invalid).
+// RedisConfigFromEnv 从环境变量读取 Redis 连接配置：
+// REDIS_ADDR（必填）、REDIS_USERNAME、REDIS_PASSWORD、
+// REDIS_DB（未设置或无效时默认为 0）。
 func RedisConfigFromEnv() (RedisConfig, error) {
 	cfg := RedisConfig{
 		Addr:     os.Getenv("REDIS_ADDR"),

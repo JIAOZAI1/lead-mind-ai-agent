@@ -1,22 +1,19 @@
-// Package identity provides the caller identity carried through a
-// request's context: which tenant the request belongs to and which user
-// made it. These are injected upstream (API gateway / auth proxy) as
-// request headers — this package only reads and threads them through,
-// it does not authenticate anyone. See PROJECT.md §4: TenantCode is used
-// for gateway-level routing to a tenant's dedicated database, not as a
-// row-level filter.
+// Package identity 提供贯穿请求 context 的调用方身份信息：请求属于哪个
+// 租户、由哪个用户发起。这些信息由上游（API 网关 / 认证代理）以请求头的
+// 形式注入——本包只负责读取并透传，不做任何身份认证。参见 PROJECT.md
+// §4：TenantCode 用于网关层路由到该租户专属的数据库，而不是作为行级
+// 过滤条件使用。
 package identity
 
 import "context"
 
-// Identity is the caller identity resolved from request headers.
+// Identity 是从请求头解析出的调用方身份信息。
 type Identity struct {
-	// TenantCode identifies which tenant's resources to route to.
+	// TenantCode 标识该请求的资源应路由到哪个租户。
 	TenantCode string
-	// UserID, Username, Roles describe the calling user within that
-	// tenant. Roles is whatever the upstream auth layer put in
-	// X-User-Roles (raw, comma-separated as received — not parsed into
-	// a fixed enum here since role semantics belong to the auth layer).
+	// UserID、Username、Roles 描述该租户下的具体调用用户。Roles 是上游
+	// 认证层写入 X-User-Roles 的原始内容（逗号分隔，按原样保留——不在
+	// 此处解析成固定枚举，因为角色语义应由认证层定义）。
 	UserID   string
 	Username string
 	Roles    string
@@ -24,13 +21,13 @@ type Identity struct {
 
 type contextKey struct{}
 
-// FromContext returns the Identity carried on ctx and whether one was set.
+// FromContext 返回 ctx 上携带的 Identity，以及是否存在该值。
 func FromContext(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(contextKey{}).(Identity)
 	return id, ok
 }
 
-// NewContext returns a copy of ctx carrying id.
+// NewContext 返回携带 id 的 ctx 副本。
 func NewContext(ctx context.Context, id Identity) context.Context {
 	return context.WithValue(ctx, contextKey{}, id)
 }

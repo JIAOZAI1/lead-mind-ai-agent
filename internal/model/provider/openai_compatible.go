@@ -1,8 +1,7 @@
-// Package provider adapts external model APIs to Eino's model.ChatModel
-// interface. NewOpenAICompatible is the entry point for any provider that
-// speaks the OpenAI chat-completions protocol, which covers most domestic
-// providers' compatible mode (Doubao/Ark, Qwen/DashScope, etc.) as well as
-// OpenAI itself — see PROJECT.md §1.3 and §7 decision log.
+// Package provider 将外部模型 API 适配到 Eino 的 model.ChatModel 接口。
+// NewOpenAICompatible 是任何支持 OpenAI chat-completions 协议的供应商的
+// 统一入口，覆盖了大多数国内供应商的兼容模式（豆包/Ark、通义千问/
+// DashScope 等）以及 OpenAI 本身——参见 PROJECT.md §1.3 及 §7 决策记录。
 package provider
 
 import (
@@ -15,8 +14,8 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/model"
 )
 
-// NewOpenAICompatible builds a ToolCallingChatModel backed by any
-// OpenAI-compatible endpoint.
+// NewOpenAICompatible 基于任意 OpenAI 兼容协议的接口构建一个
+// ToolCallingChatModel。
 func NewOpenAICompatible(ctx context.Context, cfg model.Config) (einomodel.ToolCallingChatModel, error) {
 	cm, err := openaicomp.NewChatModel(ctx, &openaicomp.ChatModelConfig{
 		BaseURL: cfg.BaseURL,

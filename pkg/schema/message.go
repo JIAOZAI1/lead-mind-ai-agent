@@ -1,14 +1,13 @@
-// Package schema holds cross-layer public types. Per PROJECT.md §6.1, this
-// is the only package internal layers may all depend on. Message is a
-// storage-oriented, JSON-stable mirror of eino/schema.Message's subset
-// needed to persist conversation turns (internal/memory,
-// internal/session), so memory/session code doesn't need to import
-// cloudwego/eino/schema directly.
+// Package schema 保存跨层的公共类型。根据 PROJECT.md §6.1，这是唯一一个
+// 允许被所有内部分层依赖的包。Message 是面向存储、JSON 结构稳定的
+// eino/schema.Message 子集镜像，专为持久化对话轮次
+// （internal/memory、internal/session）而设计，这样 memory/session 的
+// 代码就不需要直接依赖 cloudwego/eino/schema。
 package schema
 
 import einoschema "github.com/cloudwego/eino/schema"
 
-// Role mirrors eino/schema.RoleType's values.
+// Role 镜像 eino/schema.RoleType 的取值。
 type Role string
 
 const (
@@ -18,18 +17,17 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// ToolCall mirrors eino/schema.ToolCall (function-call subset only; Index
-// is stream-merging state that has no meaning once persisted).
+// ToolCall 镜像 eino/schema.ToolCall（仅保留 function-call 相关子集；
+// Index 是流式合并过程中的状态，一旦持久化便不再有意义）。
 type ToolCall struct {
 	ID           string `json:"id"`
 	FunctionName string `json:"function_name"`
 	Arguments    string `json:"arguments"`
 }
 
-// Message is the persisted form of one conversation turn's message. It
-// intentionally omits eino/schema.Message fields that are
-// stream/multimodal-specific (MultiContent, ResponseMeta, etc.) and not
-// needed to replay a conversation's text/tool-call history.
+// Message 是一条对话轮次消息的持久化形式。它刻意省略了
+// eino/schema.Message 中与流式/多模态相关的字段（MultiContent、
+// ResponseMeta 等），因为回放对话的文本/工具调用历史并不需要这些字段。
 type Message struct {
 	Role       Role       `json:"role"`
 	Content    string     `json:"content"`
@@ -39,7 +37,7 @@ type Message struct {
 	ToolName   string     `json:"tool_name,omitempty"`
 }
 
-// FromEinoMessage converts an eino/schema.Message into the persisted DTO.
+// FromEinoMessage 将 eino/schema.Message 转换为持久化用的 DTO。
 func FromEinoMessage(m *einoschema.Message) Message {
 	out := Message{
 		Role:       Role(m.Role),
@@ -61,7 +59,7 @@ func FromEinoMessage(m *einoschema.Message) Message {
 	return out
 }
 
-// FromEinoMessages converts a slice, skipping nil entries.
+// FromEinoMessages 转换一个切片，跳过其中的 nil 元素。
 func FromEinoMessages(msgs []*einoschema.Message) []Message {
 	out := make([]Message, 0, len(msgs))
 	for _, m := range msgs {
@@ -73,8 +71,8 @@ func FromEinoMessages(msgs []*einoschema.Message) []Message {
 	return out
 }
 
-// ToEinoMessage converts the persisted DTO back into an eino/schema.Message
-// suitable for feeding into react.Agent.Generate/Stream as input history.
+// ToEinoMessage 将持久化 DTO 转换回 eino/schema.Message，可直接作为输入
+// 历史传给 react.Agent.Generate/Stream。
 func ToEinoMessage(m Message) *einoschema.Message {
 	out := &einoschema.Message{
 		Role:       einoschema.RoleType(m.Role),
@@ -99,7 +97,7 @@ func ToEinoMessage(m Message) *einoschema.Message {
 	return out
 }
 
-// ToEinoMessages converts a slice back into eino/schema.Message pointers.
+// ToEinoMessages 将一个切片转换回 eino/schema.Message 指针切片。
 func ToEinoMessages(msgs []Message) []*einoschema.Message {
 	out := make([]*einoschema.Message, len(msgs))
 	for i, m := range msgs {

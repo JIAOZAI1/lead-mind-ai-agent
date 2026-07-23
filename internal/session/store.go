@@ -9,11 +9,9 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenantdb"
 )
 
-// Session is a durable record of a conversation session's metadata. It
-// deliberately does not carry conversation content — that lives in
-// internal/memory/shortterm and expires independently (see PROJECT.md
-// decision to keep the session list persistent past the short-term
-// memory TTL).
+// Session 是一个对话会话元数据的持久化记录。它刻意不携带对话内容
+// ——对话内容存在 internal/memory/shortterm 中，独立过期（参见
+// PROJECT.md 中"会话列表需要在短期记忆 TTL 之后依然保持持久"的决策）。
 type Session struct {
 	ID           string
 	UserID       string
@@ -24,45 +22,43 @@ type Session struct {
 	LastActiveAt time.Time
 }
 
-// Store manages session metadata in a tenant's MySQL database.
+// Store 在租户的 MySQL 数据库中管理会话元数据。
 type Store interface {
-	// Create registers a new session's metadata. Called once, the first
-	// time a session ID is minted.
+	// Create 注册一个新会话的元数据。仅在首次生成某个 session ID 时
+	// 调用一次。
 	Create(ctx context.Context, tenantCode string, s Session) error
 
-	// Touch bumps last_active_at to now. Called on every turn of an
-	// existing session.
+	// Touch 将 last_active_at 更新为当前时间。在已有会话的每一轮对话
+	// 中都会被调用。
 	Touch(ctx context.Context, tenantCode, sessionID string) error
 
-	// Rename updates a session's title.
+	// Rename 更新会话标题。
 	Rename(ctx context.Context, tenantCode, sessionID, title string) error
 
-	// SetPinned toggles the pinned flag.
+	// SetPinned 切换置顶标记。
 	SetPinned(ctx context.Context, tenantCode, sessionID string, pinned bool) error
 
-	// SetArchived toggles the archived flag.
+	// SetArchived 切换归档标记。
 	SetArchived(ctx context.Context, tenantCode, sessionID string, archived bool) error
 
-	// Delete removes a session's metadata record.
+	// Delete 删除一条会话元数据记录。
 	Delete(ctx context.Context, tenantCode, sessionID string) error
 
-	// List returns userID's sessions, pinned first then most-recently-active,
-	// optionally including archived ones.
+	// List 返回 userID 的会话列表，置顶的排在前面，其余按最近活跃排序，
+	// 可选择是否包含已归档的会话。
 	List(ctx context.Context, tenantCode, userID string, includeArchived bool) ([]Session, error)
 
-	// Get returns a single session's metadata, or (Session{}, false, nil)
-	// if it doesn't exist.
+	// Get 返回单个会话的元数据；如果不存在，返回 (Session{}, false, nil)。
 	Get(ctx context.Context, tenantCode, sessionID string) (Session, bool, error)
 }
 
-// MySQLStore is a Store backed by each tenant's own MySQL database,
-// reached exclusively through registry — never a direct connection
-// string — per PROJECT.md §6.2.
+// MySQLStore 是一个基于每个租户自有 MySQL 数据库实现的 Store，根据
+// PROJECT.md §6.2，一律通过 registry 获取连接——绝不使用直连字符串。
 type MySQLStore struct {
 	registry *tenantdb.Registry
 }
 
-// NewMySQLStore builds a Store that resolves connections via registry.
+// NewMySQLStore 构建一个通过 registry 解析连接的 Store。
 func NewMySQLStore(registry *tenantdb.Registry) *MySQLStore {
 	return &MySQLStore{registry: registry}
 }
