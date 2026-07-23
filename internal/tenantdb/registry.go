@@ -86,7 +86,7 @@ func (r *Registry) Get(ctx context.Context, tenantCode string) (*sql.DB, error) 
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true", info.Username, info.Password, info.Host, info.Port, info.Database)
-	log.Printf("tenant %s db dsn: %s", tenantCode, dsn)
+	log.Printf("tenant %s db dsn: %s:***@tcp(%s:%d)/%s?parseTime=true", tenantCode, info.Username, info.Host, info.Port, info.Database)
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {

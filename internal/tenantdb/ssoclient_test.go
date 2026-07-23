@@ -33,6 +33,37 @@ func TestFetchDBInfo_Success(t *testing.T) {
 	}
 }
 
+// TestFetchDBInfo_RealSSOResponseShape pins the exact field names
+// sso-service's /internal/tenants/:tenantCode/db-info returns, so a
+// struct-tag/mock drift (like the previous host/port/database/username/
+// password tags that didn't match sso-service's dbHost/dbPort/dbName/
+// dbUsername/dbPassword) fails loudly instead of decoding to zero values.
+func TestFetchDBInfo_RealSSOResponseShape(t *testing.T) {
+	const rawResponse = `{"tenantCode":"tenant-a","dbHost":"db-a.internal","dbPort":3306,"dbName":"tenant_a","dbUsername":"tenant_a_user","dbPassword":"stub-password"}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(rawResponse))
+	}))
+	defer srv.Close()
+
+	client := NewSSOClient(srv.URL, "secret-token")
+	info, err := client.FetchDBInfo(context.Background(), "tenant-a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := DBInfo{
+		Host:     "db-a.internal",
+		Port:     3306,
+		Database: "tenant_a",
+		Username: "tenant_a_user",
+		Password: "stub-password",
+	}
+	if info != want {
+		t.Fatalf("decoded db info = %+v, want %+v", info, want)
+	}
+}
+
 func TestFetchDBInfo_TenantNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

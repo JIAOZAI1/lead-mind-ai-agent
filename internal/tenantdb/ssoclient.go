@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -21,11 +22,11 @@ const internalTokenHeader = "X-Internal-Token"
 
 // DBInfo is a tenant's MySQL connection info as returned by sso-service.
 type DBInfo struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Database string `json:"database"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Host     string `json:"dbHost"`
+	Port     int    `json:"dbPort"`
+	Database string `json:"dbName"`
+	Username string `json:"dbUsername"`
+	Password string `json:"dbPassword"`
 }
 
 // Sentinel errors so callers can distinguish "tenant doesn't exist" from
@@ -62,8 +63,6 @@ func (c *SSOClient) FetchDBInfo(ctx context.Context, tenantCode string) (DBInfo,
 	log.Printf("fetching db-info for tenant %s from url: %s", tenantCode, url)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	log.Printf("building db-info request for tenant %s", tenantCode)
-
 	if err != nil {
 		return DBInfo{}, fmt.Errorf("build db-info request: %w", err)
 	}
@@ -75,19 +74,25 @@ func (c *SSOClient) FetchDBInfo(ctx context.Context, tenantCode string) (DBInfo,
 	}
 	defer resp.Body.Close()
 
-	log.Printf("response body for tenant %s: %v", tenantCode, resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return DBInfo{}, fmt.Errorf("read db-info response for tenant %s: %w", tenantCode, err)
+	}
+
 	switch resp.StatusCode {
 	case http.StatusOK:
 		var info DBInfo
-		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		if err := json.Unmarshal(body, &info); err != nil {
+			log.Printf("decode db-info failed for tenant %s: status=%d body_len=%d", tenantCode, resp.StatusCode, len(body))
 			return DBInfo{}, fmt.Errorf("decode db-info for tenant %s: %w", tenantCode, err)
 		}
+		log.Printf("fetched db-info for tenant %s: status=%d host=%s db=%s", tenantCode, resp.StatusCode, info.Host, info.Database)
 		return info, nil
 	case http.StatusNotFound:
 		return DBInfo{}, fmt.Errorf("tenant %s: %w", tenantCode, ErrTenantNotFound)
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return DBInfo{}, fmt.Errorf("tenant %s: %w", tenantCode, ErrUnauthorized)
 	default:
-		return DBInfo{}, fmt.Errorf("fetch db-info for tenant %s: unexpected status %d", tenantCode, resp.StatusCode)
+		return DBInfo{}, fmt.Errorf("fetch db-info for tenant %s: unexpected status %d, body=%s", tenantCode, resp.StatusCode, body)
 	}
 }
