@@ -51,6 +51,19 @@ WORKDIR /app
 
 # 常见运行时依赖：证书（HTTPS 调用）和时区库
 RUN apk add --no-cache ca-certificates tzdata
+
+# 统一容器时区为 Asia/Shanghai (+8:00)：软链 /etc/localtime 让 time.Local
+# （因而 log/slog 默认 handler 打印的时间戳、以及未来任何直接用 time.Local
+# 的代码）都以北京时间显示，避免日志时间戳和运维人员本地时间对不上。
+# TZ 环境变量是保险：即使某个基础镜像/运行时没有正确读取 /etc/localtime，
+# glibc/musl 的时区解析也会退回读 TZ。
+# 注意：业务代码里凡是存储型时间戳（如 internal/memory/shortterm 写入
+# Redis 的 last_active_at）必须继续显式 .UTC()，不得依赖进程时区——这个
+# 时区设置只影响“人读”的日志展示，不改变任何持久化时间语义。
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+ENV TZ=Asia/Shanghai
+
 COPY --from=build /out/server /app/server
 
 EXPOSE 8080
