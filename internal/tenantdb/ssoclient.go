@@ -75,6 +75,7 @@ func (c *SSOClient) FetchDBInfo(ctx context.Context, tenantCode string) (DBInfo,
 	}
 	defer resp.Body.Close()
 
+	log.Printf("response body for tenant %s: %v", tenantCode, resp.Body)
 	switch resp.StatusCode {
 	case http.StatusOK:
 		var info DBInfo
