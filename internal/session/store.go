@@ -78,7 +78,7 @@ func (s *MySQLStore) db(ctx context.Context, tenantCode string) (*sql.DB, error)
 func (s *MySQLStore) Create(ctx context.Context, tenantCode string, sess Session) error {
 	db, err := s.db(ctx, tenantCode)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve tenant db: %w", err)
 	}
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO agent_sessions (id, user_id, title, pinned, archived)

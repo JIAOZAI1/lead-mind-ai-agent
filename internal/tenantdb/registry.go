@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -85,6 +86,8 @@ func (r *Registry) Get(ctx context.Context, tenantCode string) (*sql.DB, error) 
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true", info.Username, info.Password, info.Host, info.Port, info.Database)
+	log.Printf("tenant %s db dsn: %s", tenantCode, dsn)
+
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db pool for tenant %s: %w", tenantCode, err)

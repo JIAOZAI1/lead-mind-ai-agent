@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bash-runner
+  labels:
+    app: bash-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bash-runner
+  template:
+    metadata:
+      labels:
+        app: bash-runner
+    spec:
+      containers:
+      - name: bash
+        image: ubuntu:22.04
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            while true; do
+              echo "$(date) - alive"
+              sleep 3600
+            done
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi

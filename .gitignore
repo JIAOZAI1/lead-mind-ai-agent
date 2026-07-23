@@ -10,3 +10,5 @@
 # Local k8s manifests may carry real secrets/endpoints once filled in
 # (see deployments/k8s/secret.yaml, configmap.yaml) — keep out of git.
 /deployments/
+internal/tenantdb/registry.go
+.gitignore
