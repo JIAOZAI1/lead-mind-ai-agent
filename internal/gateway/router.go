@@ -28,6 +28,9 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 	tenantScoped.HandleFunc("GET /ai-agent/v1/sessions/{id}/messages", deps.GetSessionMessages)
 	tenantScoped.HandleFunc("PATCH /ai-agent/v1/sessions/{id}", deps.PatchSession)
 	tenantScoped.HandleFunc("DELETE /ai-agent/v1/sessions/{id}", deps.DeleteSession)
+	if deps.Plugin != nil {
+		deps.Plugin.Register(tenantScoped)
+	}
 	// Recover 和 Logging 从外层包裹 WithIdentity——也就是排在身份解析
 	// 之前——这样即使请求被 WithIdentity 拒绝（缺少 X-Tenant-Code），
 	// 依然会产生一条日志；而下游任何位置（包括 WithIdentity 内部本身）
@@ -35,6 +38,7 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 	// 信息而非从 context 读取，所以这个包裹顺序只是为了保证
 	// panic/错误都能被覆盖到，与身份信息的可见性无关。
 	mux.Handle("/ai-agent/", middleware.Recover(middleware.Logging(middleware.WithIdentity(tenantScoped))))
+	mux.Handle("/api/plugin/", middleware.Recover(middleware.Logging(middleware.WithIdentity(tenantScoped))))
 
 	return mux
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/memory/transcript"
 	modelcfg "github.com/JIAOZAI1/lead-mind-ai-agent/internal/model"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/model/provider"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/plugin"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/session"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tenantdb"
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/tools/builtin"
@@ -95,6 +96,13 @@ func main() {
 	transcriptStore := transcript.NewMySQLStore(registry)
 
 	compactionCfg := memory.DefaultCompactionConfig(chatModel)
+	pluginService := plugin.NewService(
+		plugin.NewRedisStore(
+			redisClient,
+			envDurationSeconds("PLUGIN_TASK_TTL_SECONDS", 24*time.Hour),
+		),
+		plugin.NewModelBrowserAgent(chatModel),
+	)
 
 	deps := handler.AgentDeps{
 		ChatModel:  chatModel,
@@ -104,6 +112,7 @@ func main() {
 		LongTerm:   longTermStore,
 		Transcript: transcriptStore,
 		Compaction: compactionCfg,
+		Plugin:     plugin.NewHandler(pluginService),
 	}
 
 	addr := os.Getenv("SERVER_ADDR")
