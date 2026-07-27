@@ -87,7 +87,6 @@ func (a *ModelBrowserAgent) NextAction(ctx context.Context, input AgentInput) (D
 		ctx,
 		messages,
 		model.WithTemperature(0),
-		model.WithToolChoice(schema.ToolChoiceForced, _actionToolName),
 	)
 	if err != nil {
 		return Decision{}, fmt.Errorf("generate browser action: %w", err)

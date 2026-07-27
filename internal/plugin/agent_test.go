@@ -10,16 +10,18 @@ import (
 )
 
 type recordingModel struct {
-	input []*schema.Message
-	tools []*schema.ToolInfo
+	input   []*schema.Message
+	tools   []*schema.ToolInfo
+	options *model.Options
 }
 
 func (m *recordingModel) Generate(
 	_ context.Context,
 	input []*schema.Message,
-	_ ...model.Option,
+	opts ...model.Option,
 ) (*schema.Message, error) {
 	m.input = input
+	m.options = model.GetCommonOptions(nil, opts...)
 	return schema.AssistantMessage("", []schema.ToolCall{{
 		ID:   "model_call_2",
 		Type: "function",
@@ -107,6 +109,12 @@ func TestModelBrowserAgent_UsesGoalHistoryAndHTML(t *testing.T) {
 	}
 	if len(chatModel.tools) != 1 || chatModel.tools[0].Name != _actionToolName {
 		t.Fatalf("bound tools = %#v", chatModel.tools)
+	}
+	if chatModel.options.ToolChoice != nil {
+		t.Fatalf("tool choice = %q, want provider default", *chatModel.options.ToolChoice)
+	}
+	if chatModel.options.Temperature == nil || *chatModel.options.Temperature != 0 {
+		t.Fatalf("temperature = %#v, want 0", chatModel.options.Temperature)
 	}
 	if len(chatModel.input) != 5 {
 		t.Fatalf("model messages = %d, want 5", len(chatModel.input))
