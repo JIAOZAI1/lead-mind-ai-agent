@@ -406,7 +406,8 @@ func mergeVerifiedLeads(task *Task, candidates []Lead) []Lead {
 		candidate.Evidence = truncateText(strings.TrimSpace(candidate.Evidence), 2000)
 		candidate.Contact = truncateText(strings.TrimSpace(candidate.Contact), 1000)
 		key := leadWebsiteKey(candidate.Website)
-		if candidate.CompanyName == "" || candidate.Evidence == "" || key == "" {
+		if candidate.CompanyName == "" || candidate.Evidence == "" ||
+			candidate.Contact == "" || key == "" {
 			continue
 		}
 		if _, observed := observedURLs[normalizeSourceURL(candidate.SourceURL)]; !observed {

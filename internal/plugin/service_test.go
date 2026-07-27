@@ -16,18 +16,27 @@ func TestMergeVerifiedLeads_RequiresObservedSourceAndDeduplicatesWebsite(t *test
 			Website:     "https://www.example.com",
 			SourceURL:   "https://example.com/about",
 			Evidence:    "官网说明提供太阳能组件。",
+			Contact:     "sales@example.com",
 		},
 		{
 			CompanyName: "Example Solar Duplicate",
 			Website:     "https://example.com/contact",
 			SourceURL:   "https://example.com/about",
 			Evidence:    "同一企业的另一条记录。",
+			Contact:     "contact@example.com",
 		},
 		{
 			CompanyName: "Unobserved Company",
 			Website:     "https://unobserved.example",
 			SourceURL:   "https://unobserved.example/about",
 			Evidence:    "来源页面未被任务观察。",
+			Contact:     "sales@unobserved.example",
+		},
+		{
+			CompanyName: "No Contact Company",
+			Website:     "https://no-contact.example",
+			SourceURL:   "https://example.com/about",
+			Evidence:    "页面具有业务相关性但没有公开联系方式。",
 		},
 	})
 

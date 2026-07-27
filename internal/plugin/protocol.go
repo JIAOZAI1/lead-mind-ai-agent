@@ -74,7 +74,7 @@ type Lead struct {
 	Website     string `json:"website"`
 	SourceURL   string `json:"sourceUrl"`
 	Evidence    string `json:"evidence"`
-	Contact     string `json:"contact,omitempty"`
+	Contact     string `json:"contact"`
 }
 
 // CommandPoll 是后端对插件的任务状态指令。Status 是任务状态的唯一权威来源；
@@ -164,11 +164,10 @@ func workflows() []Workflow {
 			}},
 			Capabilities: []string{"多标签页", "页面正文", "链接与 DOM", "按需截图"},
 			AgentPrompt: `使用 Google 搜索与目标产品、国家相关的潜在企业客户。阅读搜索结果并打开候选企业官网，
-确认企业与产品的相关性。每发现一个已核实客户，立即在 send_browser_action 的 leads 中结构化上报：
-companyName、website、sourceUrl、evidence，以及页面明确公开时才填写的 contact。sourceUrl 必须是当前任务实际观察过的页面。
+对候选官网完成 STANDARD 或 FULL 观察后，调用 analyze_page 从 Agent 判断页面是否同时具有业务相关性和明确公开联系方式。
+只统计 analyze_page 返回的客户；返回 found=false 时不保留结果，继续下一个候选。
 排除广告、社交网络、聚合目录和无法从页面证实的信息。后端会按 website 去重、累计并在达到 resultLimit 时自动终止任务；
-未达到目标时继续搜索和核实，不要仅把客户写进 memory。确实没有更多可靠候选时才可提前 COMPLETE，
-并在 summary 中说明已核实数量和未完成原因。`,
+确实没有更多可靠候选时才可提前 COMPLETE，并在 summary 中说明已核实数量和未完成原因。`,
 		},
 		{
 			WorkflowID:   "google-maps-leads",
