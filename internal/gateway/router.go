@@ -38,7 +38,6 @@ func NewRouter(deps handler.AgentDeps) http.Handler {
 	// 信息而非从 context 读取，所以这个包裹顺序只是为了保证
 	// panic/错误都能被覆盖到，与身份信息的可见性无关。
 	mux.Handle("/ai-agent/", middleware.Recover(middleware.Logging(middleware.WithIdentity(tenantScoped))))
-	mux.Handle("/api/plugin/", middleware.Recover(middleware.Logging(middleware.WithIdentity(tenantScoped))))
 
 	return mux
 }

@@ -56,12 +56,12 @@ func TestPluginAPI_CommandLoop(t *testing.T) {
 	service := plugin.NewService(plugin.NewMemoryStore(), agent)
 	router := gateway.NewRouter(handler.AgentDeps{Plugin: plugin.NewHandler(service)})
 
-	workflows := request(t, router, http.MethodGet, "/api/plugin/workflows", nil, "tenant-a", "user-a")
+	workflows := request(t, router, http.MethodGet, "/ai-agent/api/plugin/workflows", nil, "tenant-a", "user-a")
 	if workflows.Code != http.StatusOK {
 		t.Fatalf("list workflows status = %d, body = %s", workflows.Code, workflows.Body.String())
 	}
 
-	created := request(t, router, http.MethodPost, "/api/plugin/tasks", map[string]any{
+	created := request(t, router, http.MethodPost, "/ai-agent/api/plugin/tasks", map[string]any{
 		"workflowId": "google-lead-search",
 		"inputs": map[string]any{
 			"product":     "solar panel",
@@ -92,7 +92,7 @@ func TestPluginAPI_CommandLoop(t *testing.T) {
 	}
 
 	observationResponse := request(t, router, http.MethodPost,
-		"/api/plugin/tasks/"+createResponse.TaskID+"/observations",
+		"/ai-agent/api/plugin/tasks/"+createResponse.TaskID+"/observations",
 		map[string]any{
 			"taskId":        createResponse.TaskID,
 			"tenantCode":    "tenant-a",
@@ -161,7 +161,7 @@ func TestPluginAPI_TenantIsolation(t *testing.T) {
 		}},
 	})
 	router := gateway.NewRouter(handler.AgentDeps{Plugin: plugin.NewHandler(service)})
-	created := request(t, router, http.MethodPost, "/api/plugin/tasks", map[string]any{
+	created := request(t, router, http.MethodPost, "/ai-agent/api/plugin/tasks", map[string]any{
 		"workflowId": "google-lead-search",
 		"inputs": map[string]any{
 			"product": "battery", "country": "Japan", "resultLimit": 1,
@@ -173,7 +173,7 @@ func TestPluginAPI_TenantIsolation(t *testing.T) {
 	decode(t, created.Body, &response)
 
 	otherTenant := request(t, router, http.MethodGet,
-		"/api/plugin/tasks/"+response.TaskID+"/commands", nil, "tenant-b", "user-a")
+		"/ai-agent/api/plugin/tasks/"+response.TaskID+"/commands", nil, "tenant-b", "user-a")
 	if otherTenant.Code != http.StatusNotFound {
 		t.Fatalf("cross-tenant poll status = %d, want %d",
 			otherTenant.Code, http.StatusNotFound)
@@ -188,7 +188,7 @@ type pollResponse struct {
 func poll(t *testing.T, router http.Handler, taskID string) pollResponse {
 	t.Helper()
 	response := request(t, router, http.MethodGet,
-		"/api/plugin/tasks/"+taskID+"/commands", nil, "tenant-a", "user-a")
+		"/ai-agent/api/plugin/tasks/"+taskID+"/commands", nil, "tenant-a", "user-a")
 	if response.Code != http.StatusOK {
 		t.Fatalf("poll status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -206,7 +206,7 @@ func submitResult(
 ) {
 	t.Helper()
 	response := request(t, router, http.MethodPost,
-		"/api/plugin/tasks/"+taskID+"/command-results",
+		"/ai-agent/api/plugin/tasks/"+taskID+"/command-results",
 		map[string]any{
 			"commandId":  command.CommandID,
 			"sequence":   command.Sequence,

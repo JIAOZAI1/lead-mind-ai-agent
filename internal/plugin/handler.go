@@ -20,12 +20,12 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/plugin/workflows", h.listWorkflows)
-	mux.HandleFunc("POST /api/plugin/tasks", h.createTask)
-	mux.HandleFunc("GET /api/plugin/tasks/{taskId}/commands", h.pollCommand)
-	mux.HandleFunc("POST /api/plugin/tasks/{taskId}/command-results", h.submitCommandResult)
-	mux.HandleFunc("POST /api/plugin/tasks/{taskId}/observations", h.submitObservation)
-	mux.HandleFunc("POST /api/plugin/tasks/{taskId}/control", h.controlTask)
+	mux.HandleFunc("GET /ai-agent/api/plugin/workflows", h.listWorkflows)
+	mux.HandleFunc("POST /ai-agent/api/plugin/tasks", h.createTask)
+	mux.HandleFunc("GET /ai-agent/api/plugin/tasks/{taskId}/commands", h.pollCommand)
+	mux.HandleFunc("POST /ai-agent/api/plugin/tasks/{taskId}/command-results", h.submitCommandResult)
+	mux.HandleFunc("POST /ai-agent/api/plugin/tasks/{taskId}/observations", h.submitObservation)
+	mux.HandleFunc("POST /ai-agent/api/plugin/tasks/{taskId}/control", h.controlTask)
 }
 
 func (h *Handler) listWorkflows(w http.ResponseWriter, _ *http.Request) {
