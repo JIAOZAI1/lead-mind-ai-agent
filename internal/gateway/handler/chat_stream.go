@@ -29,7 +29,8 @@ type streamDeltaEvent struct {
 // ChatStream 通过 SSE 处理
 // GET /ai-agent/v1/chat/stream?message=...&session_id=...，将 ReAct
 // agent 生成的内容增量实时流式返回。与 Chat 类似，本接口也会
-// 加载/持久化会话级对话历史、注册/刷新会话元数据、并将本轮内容追加
+// 加载/持久化会话级对话历史（短期副本过期时同样走 loadHistory 的
+// transcript 重建路径）、注册/刷新会话元数据、并将本轮内容追加
 // 写入持久化记录；与 Chat 不同的是，session_id 是通过专门的第一帧
 // SSE 事件传递的，而不是 JSON 响应体中的字段。工具调用的中间步骤
 // 目前还不会展示给客户端——只有最终的 assistant 消息内容会被流式
@@ -69,7 +70,7 @@ func (d AgentDeps) ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	history, err := d.ShortTerm.LoadHistory(ctx, id.TenantCode, sessionID)
+	history, err := d.loadHistory(ctx, id.TenantCode, id.UserID, sessionID, isNewSession)
 	if err != nil {
 		httpError(ctx, w, r, err, "failed to load conversation history", http.StatusInternalServerError)
 		return

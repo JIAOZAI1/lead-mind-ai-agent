@@ -24,7 +24,8 @@ type chatResponse struct {
 }
 
 // Chat 处理 POST /ai-agent/v1/chat：将请求消息交给 ReAct agent 处理，
-// 读取并持久化会话级对话历史（internal/memory/shortterm），
+// 读取并持久化会话级对话历史（internal/memory/shortterm，短期副本过期
+// 时回退到 internal/memory/transcript 重建，见 loadHistory），
 // 注册/刷新会话的持久化元数据（internal/session），使其即便在短期记忆
 // TTL 过期后依然出现在会话列表（GET /ai-agent/v1/sessions）中；同时将
 // 本轮原始消息追加写入持久化、不压缩的完整记录
@@ -66,7 +67,7 @@ func (d AgentDeps) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	history, err := d.ShortTerm.LoadHistory(ctx, id.TenantCode, sessionID)
+	history, err := d.loadHistory(ctx, id.TenantCode, id.UserID, sessionID, isNewSession)
 	if err != nil {
 		// 这里选择直接失败，而不是静默降级为无上下文的回复：一个看似
 		// 正常、实际却悄悄丢失了历史上下文的回复，比一个明确的错误更
