@@ -81,6 +81,9 @@ func TestPluginAPI_CommandLoop(t *testing.T) {
 	if first.Command.Action.Type != "OPEN_TAB" || first.Command.Sequence != 1 {
 		t.Fatalf("first command = %#v", first.Command)
 	}
+	if first.Status != plugin.TaskRunning || !first.Continue {
+		t.Fatalf("first poll state = %#v", first)
+	}
 	submitResult(t, router, createResponse.TaskID, first.Command,
 		json.RawMessage(`{"pageId":"page_1"}`))
 
@@ -120,6 +123,10 @@ func TestPluginAPI_CommandLoop(t *testing.T) {
 	if third.Command.Action.Type != "COMPLETE" || third.Command.Sequence != 3 {
 		t.Fatalf("third command = %#v", third.Command)
 	}
+	if third.Status != plugin.TaskCompleted || third.Continue ||
+		third.ResultSummary != "已完成页面分析" {
+		t.Fatalf("terminal poll state = %#v", third)
+	}
 	if len(agent.inputs) != 3 {
 		t.Fatalf("agent calls = %d, want 3", len(agent.inputs))
 	}
@@ -138,6 +145,18 @@ func TestPluginAPI_CommandLoop(t *testing.T) {
 		t.Fatalf("third agent call observations = %#v", agent.inputs[2].Observations)
 	}
 
+	// 终止状态由后端在生成 COMPLETE 时立即落定；结果确认前重复轮询
+	// 返回同一终止通知，不会再次调用 Agent。
+	repeatedTerminal := poll(t, router, createResponse.TaskID)
+	if repeatedTerminal.Status != plugin.TaskCompleted ||
+		repeatedTerminal.Command == nil ||
+		repeatedTerminal.Command.CommandID != third.Command.CommandID {
+		t.Fatalf("repeated terminal poll = %#v", repeatedTerminal)
+	}
+	if len(agent.inputs) != 3 {
+		t.Fatalf("agent calls after terminal retry = %d, want 3", len(agent.inputs))
+	}
+
 	submitResult(t, router, createResponse.TaskID, third.Command,
 		json.RawMessage(`{"summary":"done"}`))
 	submitResult(t, router, createResponse.TaskID, third.Command,
@@ -146,6 +165,10 @@ func TestPluginAPI_CommandLoop(t *testing.T) {
 	done := poll(t, router, createResponse.TaskID)
 	if done.Command != nil {
 		t.Fatalf("completed task returned command %#v", done.Command)
+	}
+	if done.Status != plugin.TaskCompleted || done.Continue ||
+		done.ResultSummary != "已完成页面分析" {
+		t.Fatalf("completed task state = %#v", done)
 	}
 }
 
@@ -180,9 +203,60 @@ func TestPluginAPI_TenantIsolation(t *testing.T) {
 	}
 }
 
+func TestPluginAPI_BackendControlsPauseAndResume(t *testing.T) {
+	t.Parallel()
+
+	service := plugin.NewService(plugin.NewMemoryStore(), &scriptedAgent{
+		decisions: []plugin.Decision{{
+			Action: plugin.BrowserAction{
+				Type: "OPEN_TAB",
+				URL:  "https://www.google.com/search?q=battery+Japan",
+			},
+		}},
+	})
+	router := gateway.NewRouter(handler.AgentDeps{Plugin: plugin.NewHandler(service)})
+	created := request(t, router, http.MethodPost, "/ai-agent/api/plugin/tasks", map[string]any{
+		"workflowId": "google-lead-search",
+		"inputs": map[string]any{
+			"product": "battery", "country": "Japan", "resultLimit": 1,
+		},
+	}, "tenant-a", "user-a")
+	var response struct {
+		TaskID string `json:"taskId"`
+	}
+	decode(t, created.Body, &response)
+
+	control := func(action string) {
+		t.Helper()
+		result := request(t, router, http.MethodPost,
+			"/ai-agent/api/plugin/tasks/"+response.TaskID+"/control",
+			map[string]any{"action": action, "pageId": ""},
+			"tenant-a", "user-a")
+		if result.Code != http.StatusNoContent {
+			t.Fatalf("%s status = %d, body = %s", action, result.Code, result.Body.String())
+		}
+	}
+
+	control("PAUSE")
+	paused := poll(t, router, response.TaskID)
+	if paused.Status != plugin.TaskPaused || paused.Continue || paused.Command != nil {
+		t.Fatalf("paused poll = %#v", paused)
+	}
+
+	control("RESUME")
+	resumed := poll(t, router, response.TaskID)
+	if resumed.Status != plugin.TaskRunning || !resumed.Continue ||
+		resumed.Command == nil || resumed.Command.Action.Type != "OPEN_TAB" {
+		t.Fatalf("resumed poll = %#v", resumed)
+	}
+}
+
 type pollResponse struct {
-	Command      *plugin.AgentCommand `json:"command"`
-	RetryAfterMS int                  `json:"retryAfterMs"`
+	Status        plugin.TaskStatus    `json:"status"`
+	Continue      bool                 `json:"continue"`
+	Command       *plugin.AgentCommand `json:"command"`
+	RetryAfterMS  int                  `json:"retryAfterMs"`
+	ResultSummary string               `json:"resultSummary"`
 }
 
 func poll(t *testing.T, router http.Handler, taskID string) pollResponse {

@@ -52,7 +52,7 @@ func (h *Handler) createTask(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) pollCommand(w http.ResponseWriter, r *http.Request) {
 	id, _ := identity.FromContext(r.Context())
-	command, retryAfterMS, err := h.service.NextCommand(
+	response, err := h.service.PollCommand(
 		r.Context(), id.TenantCode, id.UserID, r.PathValue("taskId"),
 	)
 	if err != nil {
@@ -63,10 +63,6 @@ func (h *Handler) pollCommand(w http.ResponseWriter, r *http.Request) {
 		writeError(r, w, err, status)
 		return
 	}
-	response := struct {
-		Command      *AgentCommand `json:"command,omitempty"`
-		RetryAfterMS int           `json:"retryAfterMs"`
-	}{Command: command, RetryAfterMS: retryAfterMS}
 	writeJSON(w, http.StatusOK, response)
 }
 

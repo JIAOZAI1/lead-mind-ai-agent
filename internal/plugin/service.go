@@ -66,15 +66,30 @@ func (s *Service) NextCommand(
 	userID string,
 	taskID string,
 ) (*AgentCommand, int, error) {
+	poll, err := s.PollCommand(ctx, tenantCode, userID, taskID)
+	return poll.Command, poll.RetryAfterMS, err
+}
+
+// PollCommand 返回由后端维护的任务状态和下一条执行命令。插件只负责执行
+// Command；是否继续领取以及任务是否终止，以 Status/Continue 为准。
+func (s *Service) PollCommand(
+	ctx context.Context,
+	tenantCode string,
+	userID string,
+	taskID string,
+) (CommandPoll, error) {
+	poll := CommandPoll{RetryAfterMS: defaultRetryMS}
 	var existing *AgentCommand
 	var agentInput AgentInput
 	err := s.store.Update(tenantCode, userID, taskID, func(task *Task) error {
-		if task.Status != TaskRunning {
-			return nil
-		}
+		poll.Status = task.Status
+		poll.ResultSummary = task.ResultSummary
 		if task.CurrentCommand != nil {
 			command := *task.CurrentCommand
 			existing = &command
+			return nil
+		}
+		if task.Status != TaskRunning {
 			return nil
 		}
 		if task.Planning && time.Since(task.PlanningAt) < time.Minute {
@@ -105,10 +120,13 @@ func (s *Service) NextCommand(
 		return nil
 	})
 	if err != nil || existing != nil {
-		return existing, defaultRetryMS, err
+		poll.Command = existing
+		poll.Continue = poll.Status == TaskRunning
+		return poll, err
 	}
 	if agentInput.Workflow.WorkflowID == "" {
-		return nil, defaultRetryMS, nil
+		poll.Continue = poll.Status == TaskRunning
+		return poll, nil
 	}
 
 	planningContext, cancel := context.WithTimeout(ctx, _agentPlanningTimeout)
@@ -116,17 +134,19 @@ func (s *Service) NextCommand(
 	decision, err := s.agent.NextAction(planningContext, agentInput)
 	if err != nil {
 		s.clearPlanning(tenantCode, userID, taskID)
-		return nil, defaultRetryMS, err
+		return poll, err
 	}
 	if err := validateAction(decision); err != nil {
 		s.clearPlanning(tenantCode, userID, taskID)
-		return nil, defaultRetryMS, err
+		return poll, err
 	}
 
 	var command *AgentCommand
 	err = s.store.Update(tenantCode, userID, taskID, func(task *Task) error {
 		task.Planning = false
 		task.PlanningAt = time.Time{}
+		poll.Status = task.Status
+		poll.ResultSummary = task.ResultSummary
 		if task.Status != TaskRunning || task.CurrentCommand != nil {
 			return nil
 		}
@@ -143,10 +163,21 @@ func (s *Service) NextCommand(
 		task.NextSequence++
 		task.CurrentCommand = &value
 		task.CurrentMemory = decision.Memory
+		if decision.Action.Type == "COMPLETE" {
+			// COMPLETE 是后端 Agent 的终止判定。状态在命令返回给插件前即
+			// 进入终态；命令只作为对旧版插件的终止通知保留，等待结果确认
+			// 后清除，不再由插件结果驱动状态转换。
+			task.Status = TaskCompleted
+			task.ResultSummary = decision.Action.Summary
+		}
+		poll.Status = task.Status
+		poll.ResultSummary = task.ResultSummary
 		command = &value
 		return nil
 	})
-	return command, defaultRetryMS, err
+	poll.Command = command
+	poll.Continue = poll.Status == TaskRunning
+	return poll, err
 }
 
 func (s *Service) SubmitResult(
@@ -176,9 +207,6 @@ func (s *Service) SubmitResult(
 		task.Results[result.CommandID] = result
 		task.LastResult = &result
 		actionType := task.CurrentCommand.Action.Type
-		if actionType == "COMPLETE" && result.OK {
-			task.Status = TaskCompleted
-		}
 		if actionChangesPage(actionType) {
 			delete(task.Observations, task.CurrentCommand.PageID)
 		}

@@ -66,6 +66,17 @@ type AgentCommand struct {
 	TimeoutMS       int           `json:"timeoutMs,omitempty"`
 }
 
+// CommandPoll 是后端对插件的任务状态指令。Status 是任务状态的唯一权威来源；
+// Continue 明确告诉执行端是否应继续领取命令。COMPLETED 等终态下可能仍返回
+// 一条待确认的兼容命令，执行端不应据此改变后端任务状态。
+type CommandPoll struct {
+	Status        TaskStatus    `json:"status"`
+	Continue      bool          `json:"continue"`
+	Command       *AgentCommand `json:"command,omitempty"`
+	RetryAfterMS  int           `json:"retryAfterMs"`
+	ResultSummary string        `json:"resultSummary,omitempty"`
+}
+
 type CommandError struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`

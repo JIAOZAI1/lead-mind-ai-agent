@@ -38,6 +38,7 @@ type Task struct {
 	NextSequence   int                      `json:"nextSequence"`
 	CurrentCommand *AgentCommand            `json:"currentCommand,omitempty"`
 	CurrentMemory  string                   `json:"currentMemory,omitempty"`
+	ResultSummary  string                   `json:"resultSummary,omitempty"`
 	Results        map[string]CommandResult `json:"results"`
 	LastResult     *CommandResult           `json:"lastResult,omitempty"`
 	Observation    *Observation             `json:"observation,omitempty"`
