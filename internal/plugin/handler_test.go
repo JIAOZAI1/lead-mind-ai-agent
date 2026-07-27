@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/gateway"
@@ -251,12 +252,102 @@ func TestPluginAPI_BackendControlsPauseAndResume(t *testing.T) {
 	}
 }
 
+func TestPluginAPI_StopsWhenLeadTargetIsReached(t *testing.T) {
+	t.Parallel()
+
+	agent := &scriptedAgent{decisions: []plugin.Decision{
+		{
+			Action: plugin.BrowserAction{
+				Type: "OPEN_TAB",
+				URL:  "https://example.com/about",
+			},
+		},
+		{
+			PageID: "page_1",
+			Action: plugin.BrowserAction{
+				Type:  "OBSERVE",
+				Level: "STANDARD",
+			},
+		},
+		{
+			PageID: "page_1",
+			Action: plugin.BrowserAction{Type: "WAIT"},
+			Leads: []plugin.Lead{{
+				CompanyName: "Example Solar",
+				Website:     "https://example.com",
+				SourceURL:   "https://example.com/about",
+				Evidence:    "官网说明其为德国市场提供太阳能组件。",
+				Contact:     "sales@example.com",
+			}},
+		},
+	}}
+	service := plugin.NewService(plugin.NewMemoryStore(), agent)
+	router := gateway.NewRouter(handler.AgentDeps{Plugin: plugin.NewHandler(service)})
+	created := request(t, router, http.MethodPost, "/ai-agent/api/plugin/tasks", map[string]any{
+		"workflowId": "google-lead-search",
+		"inputs": map[string]any{
+			"product": "solar panel", "country": "Germany", "resultLimit": 1,
+		},
+	}, "tenant-a", "user-a")
+	var response struct {
+		TaskID string `json:"taskId"`
+	}
+	decode(t, created.Body, &response)
+
+	first := poll(t, router, response.TaskID)
+	submitResult(t, router, response.TaskID, first.Command,
+		json.RawMessage(`{"pageId":"page_1"}`))
+
+	second := poll(t, router, response.TaskID)
+	observationResponse := request(t, router, http.MethodPost,
+		"/ai-agent/api/plugin/tasks/"+response.TaskID+"/observations",
+		map[string]any{
+			"taskId":        response.TaskID,
+			"tenantCode":    "tenant-a",
+			"pageId":        "page_1",
+			"observationId": "obs_lead",
+			"pageVersion":   1,
+			"level":         "STANDARD",
+			"url":           "https://example.com/about",
+			"title":         "Example Solar",
+			"language":      "en",
+			"collectedAt":   "2026-07-28T01:00:00Z",
+			"textSummary":   "Solar components for Germany",
+			"truncated": map[string]bool{
+				"text": false, "links": false, "elements": false, "html": false,
+			},
+		}, "tenant-a", "user-a")
+	if observationResponse.Code != http.StatusNoContent {
+		t.Fatalf("submit observation status = %d, body = %s",
+			observationResponse.Code, observationResponse.Body.String())
+	}
+	submitResult(t, router, response.TaskID, second.Command,
+		json.RawMessage(`{"observationId":"obs_lead","pageVersion":1}`))
+
+	completed := poll(t, router, response.TaskID)
+	if completed.Status != plugin.TaskCompleted || completed.Continue ||
+		completed.Command == nil || completed.Command.Action.Type != "COMPLETE" {
+		t.Fatalf("target completion poll = %#v", completed)
+	}
+	if completed.CollectedCount != 1 || completed.TargetCount != 1 ||
+		len(completed.Leads) != 1 ||
+		completed.Leads[0].CompanyName != "Example Solar" {
+		t.Fatalf("collected leads = %#v", completed)
+	}
+	if !strings.Contains(completed.ResultSummary, "已达到目标") {
+		t.Fatalf("result summary = %q", completed.ResultSummary)
+	}
+}
+
 type pollResponse struct {
-	Status        plugin.TaskStatus    `json:"status"`
-	Continue      bool                 `json:"continue"`
-	Command       *plugin.AgentCommand `json:"command"`
-	RetryAfterMS  int                  `json:"retryAfterMs"`
-	ResultSummary string               `json:"resultSummary"`
+	Status         plugin.TaskStatus    `json:"status"`
+	Continue       bool                 `json:"continue"`
+	Command        *plugin.AgentCommand `json:"command"`
+	RetryAfterMS   int                  `json:"retryAfterMs"`
+	ResultSummary  string               `json:"resultSummary"`
+	Leads          []plugin.Lead        `json:"leads"`
+	CollectedCount int                  `json:"collectedCount"`
+	TargetCount    int                  `json:"targetCount"`
 }
 
 func poll(t *testing.T, router http.Handler, taskID string) pollResponse {

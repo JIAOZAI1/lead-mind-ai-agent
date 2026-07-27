@@ -38,7 +38,9 @@ type Task struct {
 	NextSequence   int                      `json:"nextSequence"`
 	CurrentCommand *AgentCommand            `json:"currentCommand,omitempty"`
 	CurrentMemory  string                   `json:"currentMemory,omitempty"`
+	CurrentLeads   []Lead                   `json:"currentLeads,omitempty"`
 	ResultSummary  string                   `json:"resultSummary,omitempty"`
+	Leads          []Lead                   `json:"leads,omitempty"`
 	Results        map[string]CommandResult `json:"results"`
 	LastResult     *CommandResult           `json:"lastResult,omitempty"`
 	Observation    *Observation             `json:"observation,omitempty"`
@@ -55,6 +57,7 @@ type AgentStep struct {
 	Command AgentCommand  `json:"command"`
 	Result  CommandResult `json:"result"`
 	Memory  string        `json:"memory,omitempty"`
+	Leads   []Lead        `json:"leads,omitempty"`
 }
 
 type AgentEvent struct {

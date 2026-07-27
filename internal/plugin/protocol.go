@@ -4,6 +4,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -66,15 +67,28 @@ type AgentCommand struct {
 	TimeoutMS       int           `json:"timeoutMs,omitempty"`
 }
 
+// Lead 是后端已核实并持久化的客户结果。Website 用于任务内去重，
+// SourceURL/Evidence 用于保留该结果来自哪个已观察页面及其事实依据。
+type Lead struct {
+	CompanyName string `json:"companyName"`
+	Website     string `json:"website"`
+	SourceURL   string `json:"sourceUrl"`
+	Evidence    string `json:"evidence"`
+	Contact     string `json:"contact,omitempty"`
+}
+
 // CommandPoll 是后端对插件的任务状态指令。Status 是任务状态的唯一权威来源；
 // Continue 明确告诉执行端是否应继续领取命令。COMPLETED 等终态下可能仍返回
 // 一条待确认的兼容命令，执行端不应据此改变后端任务状态。
 type CommandPoll struct {
-	Status        TaskStatus    `json:"status"`
-	Continue      bool          `json:"continue"`
-	Command       *AgentCommand `json:"command,omitempty"`
-	RetryAfterMS  int           `json:"retryAfterMs"`
-	ResultSummary string        `json:"resultSummary,omitempty"`
+	Status         TaskStatus    `json:"status"`
+	Continue       bool          `json:"continue"`
+	Command        *AgentCommand `json:"command,omitempty"`
+	RetryAfterMS   int           `json:"retryAfterMs"`
+	ResultSummary  string        `json:"resultSummary,omitempty"`
+	Leads          []Lead        `json:"leads,omitempty"`
+	CollectedCount int           `json:"collectedCount"`
+	TargetCount    int           `json:"targetCount"`
 }
 
 type CommandError struct {
@@ -121,6 +135,7 @@ type Decision struct {
 	Action        BrowserAction
 	TimeoutMS     int
 	Memory        string
+	Leads         []Lead
 }
 
 func workflows() []Workflow {
@@ -149,9 +164,11 @@ func workflows() []Workflow {
 			}},
 			Capabilities: []string{"多标签页", "页面正文", "链接与 DOM", "按需截图"},
 			AgentPrompt: `使用 Google 搜索与目标产品、国家相关的潜在企业客户。阅读搜索结果并打开候选企业官网，
-确认企业与产品的相关性，记录企业名称、官网 URL、相关性证据以及页面中明确公开的联系信息。
-排除广告、社交网络、聚合目录和无法从页面证实的信息。达到 resultLimit 或没有更多可靠候选时 COMPLETE，
-在 summary 中输出已核实客户列表和未完成原因。`,
+确认企业与产品的相关性。每发现一个已核实客户，立即在 send_browser_action 的 leads 中结构化上报：
+companyName、website、sourceUrl、evidence，以及页面明确公开时才填写的 contact。sourceUrl 必须是当前任务实际观察过的页面。
+排除广告、社交网络、聚合目录和无法从页面证实的信息。后端会按 website 去重、累计并在达到 resultLimit 时自动终止任务；
+未达到目标时继续搜索和核实，不要仅把客户写进 memory。确实没有更多可靠候选时才可提前 COMPLETE，
+并在 summary 中说明已核实数量和未完成原因。`,
 		},
 		{
 			WorkflowID:   "google-maps-leads",
@@ -196,8 +213,13 @@ func validateInputs(workflow Workflow, inputs map[string]any) error {
 				return fmt.Errorf("input %q is required", name)
 			}
 		case "number":
-			if _, ok := value.(float64); !ok {
+			number, ok := value.(float64)
+			if !ok {
 				return fmt.Errorf("input %q must be a number", name)
+			}
+			if name == "resultLimit" &&
+				(math.Trunc(number) != number || number < 1 || number > 100) {
+				return fmt.Errorf("input %q must be an integer between 1 and 100", name)
 			}
 		case "boolean":
 			if _, ok := value.(bool); !ok {

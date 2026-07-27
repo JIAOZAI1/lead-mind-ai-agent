@@ -33,7 +33,13 @@ func (m *recordingModel) Generate(
 				"observationId":"obs_2",
 				"elementRef":"el_7",
 				"timeoutMs":10000,
-				"memory":"已打开 Google；待分析 Example Solar"
+				"memory":"已打开 Google；待分析 Example Solar",
+				"leads":[{
+					"companyName":"Example Solar",
+					"website":"https://example.com",
+					"sourceUrl":"https://example.com/about",
+					"evidence":"官网明确提供太阳能组件"
+				}]
 			}`,
 		},
 	}}), nil
@@ -106,6 +112,10 @@ func TestModelBrowserAgent_UsesGoalHistoryAndHTML(t *testing.T) {
 		decision.ObservationID != "obs_2" ||
 		decision.Memory == "" {
 		t.Fatalf("decision = %#v", decision)
+	}
+	if len(decision.Leads) != 1 ||
+		decision.Leads[0].CompanyName != "Example Solar" {
+		t.Fatalf("decision leads = %#v", decision.Leads)
 	}
 	if len(chatModel.tools) != 1 || chatModel.tools[0].Name != _actionToolName {
 		t.Fatalf("bound tools = %#v", chatModel.tools)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -82,8 +84,7 @@ func (s *Service) PollCommand(
 	var existing *AgentCommand
 	var agentInput AgentInput
 	err := s.store.Update(tenantCode, userID, taskID, func(task *Task) error {
-		poll.Status = task.Status
-		poll.ResultSummary = task.ResultSummary
+		fillCommandPoll(&poll, task)
 		if task.CurrentCommand != nil {
 			command := *task.CurrentCommand
 			existing = &command
@@ -108,6 +109,7 @@ func (s *Service) PollCommand(
 			Steps:        append([]AgentStep(nil), task.Steps...),
 			Observations: copyObservations(task.Observations),
 			Events:       append([]AgentEvent(nil), task.Events...),
+			Leads:        append([]Lead(nil), task.Leads...),
 		}
 		if task.Observation != nil {
 			agentInput.LatestObservationID = task.Observation.ObservationID
@@ -145,10 +147,20 @@ func (s *Service) PollCommand(
 	err = s.store.Update(tenantCode, userID, taskID, func(task *Task) error {
 		task.Planning = false
 		task.PlanningAt = time.Time{}
-		poll.Status = task.Status
-		poll.ResultSummary = task.ResultSummary
+		fillCommandPoll(&poll, task)
 		if task.Status != TaskRunning || task.CurrentCommand != nil {
 			return nil
+		}
+		newLeads := mergeVerifiedLeads(task, decision.Leads)
+		targetCount := targetLeadCount(task.Inputs)
+		if targetCount > 0 && len(task.Leads) >= targetCount {
+			decision.Action = BrowserAction{
+				Type:    "COMPLETE",
+				Summary: leadTargetSummary(task.Leads, targetCount),
+			}
+			decision.PageID = ""
+			decision.ObservationID = ""
+			decision.TimeoutMS = 0
 		}
 		value := AgentCommand{
 			ProtocolVersion: ProtocolVersion,
@@ -163,6 +175,7 @@ func (s *Service) PollCommand(
 		task.NextSequence++
 		task.CurrentCommand = &value
 		task.CurrentMemory = decision.Memory
+		task.CurrentLeads = newLeads
 		if decision.Action.Type == "COMPLETE" {
 			// COMPLETE 是后端 Agent 的终止判定。状态在命令返回给插件前即
 			// 进入终态；命令只作为对旧版插件的终止通知保留，等待结果确认
@@ -170,8 +183,7 @@ func (s *Service) PollCommand(
 			task.Status = TaskCompleted
 			task.ResultSummary = decision.Action.Summary
 		}
-		poll.Status = task.Status
-		poll.ResultSummary = task.ResultSummary
+		fillCommandPoll(&poll, task)
 		command = &value
 		return nil
 	})
@@ -214,12 +226,14 @@ func (s *Service) SubmitResult(
 			Command: *task.CurrentCommand,
 			Result:  result,
 			Memory:  task.CurrentMemory,
+			Leads:   append([]Lead(nil), task.CurrentLeads...),
 		})
 		if len(task.Steps) > maxStoredAgentSteps {
 			task.Steps = append([]AgentStep(nil), task.Steps[len(task.Steps)-maxStoredAgentSteps:]...)
 		}
 		task.CurrentCommand = nil
 		task.CurrentMemory = ""
+		task.CurrentLeads = nil
 		return nil
 	})
 }
@@ -343,6 +357,98 @@ func copyObservations(input map[string]Observation) map[string]Observation {
 		output[pageID] = observation
 	}
 	return output
+}
+
+func fillCommandPoll(poll *CommandPoll, task *Task) {
+	poll.Status = task.Status
+	poll.ResultSummary = task.ResultSummary
+	poll.Leads = append([]Lead(nil), task.Leads...)
+	poll.CollectedCount = len(task.Leads)
+	poll.TargetCount = targetLeadCount(task.Inputs)
+}
+
+func targetLeadCount(inputs map[string]any) int {
+	switch value := inputs["resultLimit"].(type) {
+	case float64:
+		return int(value)
+	case int:
+		return value
+	default:
+		return 0
+	}
+}
+
+func mergeVerifiedLeads(task *Task, candidates []Lead) []Lead {
+	if len(candidates) == 0 {
+		return nil
+	}
+	observedURLs := make(map[string]struct{}, len(task.Observations))
+	for _, observation := range task.Observations {
+		if normalized := normalizeSourceURL(observation.URL); normalized != "" {
+			observedURLs[normalized] = struct{}{}
+		}
+	}
+	existing := make(map[string]struct{}, len(task.Leads))
+	for _, lead := range task.Leads {
+		if key := leadWebsiteKey(lead.Website); key != "" {
+			existing[key] = struct{}{}
+		}
+	}
+	added := make([]Lead, 0, len(candidates))
+	targetCount := targetLeadCount(task.Inputs)
+	for _, candidate := range candidates {
+		if targetCount > 0 && len(task.Leads) >= targetCount {
+			break
+		}
+		candidate.CompanyName = strings.TrimSpace(candidate.CompanyName)
+		candidate.Website = strings.TrimSpace(candidate.Website)
+		candidate.SourceURL = strings.TrimSpace(candidate.SourceURL)
+		candidate.Evidence = truncateText(strings.TrimSpace(candidate.Evidence), 2000)
+		candidate.Contact = truncateText(strings.TrimSpace(candidate.Contact), 1000)
+		key := leadWebsiteKey(candidate.Website)
+		if candidate.CompanyName == "" || candidate.Evidence == "" || key == "" {
+			continue
+		}
+		if _, observed := observedURLs[normalizeSourceURL(candidate.SourceURL)]; !observed {
+			continue
+		}
+		if _, duplicate := existing[key]; duplicate {
+			continue
+		}
+		existing[key] = struct{}{}
+		task.Leads = append(task.Leads, candidate)
+		added = append(added, candidate)
+	}
+	return added
+}
+
+func normalizeSourceURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+		return ""
+	}
+	parsed.Fragment = ""
+	parsed.Host = strings.ToLower(parsed.Host)
+	return strings.TrimRight(parsed.String(), "/")
+}
+
+func leadWebsiteKey(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	host = strings.TrimPrefix(host, "www.")
+	return host
+}
+
+func leadTargetSummary(leads []Lead, targetCount int) string {
+	var summary strings.Builder
+	fmt.Fprintf(&summary, "已达到目标：已核实 %d/%d 个客户。", len(leads), targetCount)
+	for index, lead := range leads {
+		fmt.Fprintf(&summary, "\n%d. %s — %s", index+1, lead.CompanyName, lead.Website)
+	}
+	return truncateText(summary.String(), _maxAgentMemory)
 }
 
 func actionChangesPage(actionType string) bool {
