@@ -1,10 +1,7 @@
 package middleware
 
 import (
-	"bufio"
-	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"time"
 )
@@ -27,19 +24,6 @@ func (r *responseRecorder) Flush() {
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
-}
-
-// Hijack 委托给底层 ResponseWriter 的 Hijacker。WebSocket 升级
-// （internal/browser 的设备接入端点）必须接管底层 TCP 连接才能完成，
-// 而一个只实现了 http.ResponseWriter 的包装器会让 websocket.Accept 直接
-// 失败——包装 ResponseWriter 时丢掉底层实现的可选接口是标准库中间件的
-// 经典陷阱。
-func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hijacker, ok := r.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, errors.New("underlying ResponseWriter does not support hijacking")
-	}
-	return hijacker.Hijack()
 }
 
 // Logging 记录每个请求的 method、path、tenant/user 身份、状态码和耗时。
