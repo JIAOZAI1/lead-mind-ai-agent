@@ -1,0 +1,27 @@
+app:
+  name: lead-mind-ai-agent
+  environment: development
+
+http:
+  host: 0.0.0.0
+  port: 8080
+  mode: debug
+  read_header_timeout: 5s
+  read_timeout: 10s
+  # SSE 持续时间不固定，0 表示不设置整个服务的写超时。
+  write_timeout: 0s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+
+openai:
+  # API 密钥必须通过 LEAD_MIND_OPENAI_API_KEY 注入，不要写入配置文件。
+  base_url: ""
+  model: gpt-5.6-sol
+  timeout: 120s
+
+agent:
+  name: lead-mind-assistant
+  description: 面向 SaaS 场景提供智能问答能力
+  instruction: 你是 lead-mind-ai-agent 的智能助手。请使用中文清晰、准确地回答用户问题。
+  max_iterations: 10
+  max_input_length: 8000
