@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/config"
+	"github.com/JIAOZAI1/lead-mind-ai-agent/internal/transport/http/chat"
 )
 
 // Server 封装 HTTP 服务的启动和关闭生命周期。
@@ -16,7 +17,7 @@ type Server struct {
 }
 
 // NewServer 根据配置创建 HTTP 服务，但不会立即开始监听端口。
-func NewServer(cfg config.HTTPConfig, agentStreamer AgentStreamer, logger *slog.Logger) *Server {
+func NewServer(cfg config.HTTPConfig, agentStreamer chat.AgentStreamer, logger *slog.Logger) *Server {
 	server := &http.Server{
 		Addr:              cfg.Address(),
 		Handler:           NewRouter(agentStreamer, logger),

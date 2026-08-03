@@ -85,7 +85,14 @@ lead-mind-ai-agent/
 │   ├── memory/                # 会话与长期记忆适配
 │   ├── prompt/                # ChatTemplate 与 System Prompt
 │   ├── knowledge/             # RAG 加载、切分、索引和检索
+│   ├── middleware/            # 通用请求中间件与横切策略
 │   ├── transport/             # HTTP / gRPC 对外接口
+│   │   └── http/
+│   │       ├── chat/          # Agent 对话 Handler 与 SSE 输出
+│   │       ├── health/        # 健康检查 Handler
+│   │       ├── response/      # HTTP 与 SSE 统一响应封装
+│   │       ├── router.go      # HTTP 路由装配
+│   │       └── server.go      # HTTP Server 生命周期
 │   ├── config/                # 配置加载和校验
 │   └── observability/         # Callback、日志、Tracing、指标和审计
 ├── pkg/
@@ -151,8 +158,20 @@ curl http://127.0.0.1:8080/healthz
 成功响应：
 
 ```json
-{"status":"ok"}
+{"code":0,"message":"success","data":{"status":"ok"}}
 ```
+
+### 统一响应格式
+
+所有 HTTP Handler 和 SSE 事件统一返回 `code`、`message`、`data` 三个字段：
+
+- 成功时 `code` 为 `0`、`message` 为 `success`，业务结果放入 `data`。
+- 普通 HTTP 错误的 `code` 与 HTTP 状态码一致，`data` 为 `null`。
+- SSE 响应保留 `message`、`done`、`error` 事件类型，事件的 `data` 同样使用统一响应格式。流开始后不能修改 HTTP 状态码，因此流式错误通过响应体中的 `code` 表示。
+
+这是响应体兼容性变更。已有客户端需要从顶层业务字段迁移到 `data` 字段，并在处理 SSE 时先解析统一响应信封。
+
+HTTP Handler 按业务功能划分子目录。新增接口时应放入对应业务包，仅将跨业务的路由装配、Server 生命周期和统一响应能力保留在公共层。
 
 服务收到 `SIGINT` 或 `SIGTERM` 后，会在配置的关闭超时时间内等待现有请求完成。
 
@@ -170,10 +189,10 @@ curl -N http://127.0.0.1:8080/ai-agent/chat \
 
 ```text
 event:message
-data:{"content":"你好"}
+data:{"code":0,"message":"success","data":{"content":"你好"}}
 
 event:done
-data:{"finish_reason":"stop"}
+data:{"code":0,"message":"success","data":{"finish_reason":"stop"}}
 ```
 
 模型生成期间发生错误时返回 `error` 事件，服务端日志记录完整错误，SSE 响应不会暴露模型供应商的内部错误。客户端断开连接会取消对应的 Agent 执行。
