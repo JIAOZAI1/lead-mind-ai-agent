@@ -7,9 +7,16 @@
 .env.*
 !.env.example
 /.claude
+/configs/config.yaml
+/test/http/test.http
+AGENTS.md
 # Local deployment overrides may carry real secrets or endpoints.
 /deployments/k8s/secret*.yaml
 /deployments/k8s/*-local.yaml
 /deployments/*.local.yaml
 internal/tenantdb/registry.go
+.gitignore
+AGENTS.md
+.gitignore
+configs/config.yaml
 .gitignore

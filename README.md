@@ -102,7 +102,7 @@ lead-mind-ai-agent/
 ├── migrations/                # PostgreSQL / 向量库迁移
 ├── docs/                      # 架构与开发规范
 ├── deployments/               # Docker、Compose 和 Kubernetes
-└── tests/
+└── test/
     ├── integration/           # 集成测试
     └── e2e/                   # 端到端测试
 ```
@@ -199,6 +199,12 @@ data:{"code":0,"message":"success","data":{"finish_reason":"stop"}}
 
 当前接口尚未接入身份认证、租户上下文、限流和对话记忆，只适合基础能力验证，不应直接作为生产环境的公开接口。为支持长连接，HTTP `write_timeout` 默认设置为 `0`，模型调用仍受 `openai.timeout` 限制。
 
+### REST Client 测试请求
+
+服务启动后，可以使用支持 `.http` 文件的 REST Client 打开 [`test/http/test.http`](test/http/test.http)，单独运行健康检查和 Agent SSE 对话等完整正常请求示例。文件默认请求 `http://127.0.0.1:8080`；服务端口发生变化时，修改文件顶部的 `baseUrl` 变量即可。
+
+该文件只维护项目 HTTP 接口可直接执行的完整正常请求示例，不添加参数错误、非法请求等失败场景。新增接口时必须补充对应请求；接口的方法、路径、请求头、请求参数或响应形式发生变化时，也必须同步更新相关请求。
+
 ## 配置
 
 配置优先级从高到低为：环境变量、配置文件、内置默认值。复制示例文件后，服务会自动读取 `configs/config.yaml`：
@@ -231,6 +237,8 @@ go run ./cmd/server
 使用 OpenAI 兼容服务时，可通过 `LEAD_MIND_OPENAI_BASE_URL` 指定服务地址。API 密钥不得提交到仓库，也不得记录到日志。
 
 可配置项参见 [configs/config.example.yaml](configs/config.example.yaml)。指定的配置文件不存在、格式错误、缺少 API 密钥或模型名称，以及端口和超时参数无效时，服务会拒绝启动。
+
+使用 VS Code 的 `Launch Package` 调试配置启动服务时，工作目录会设置为项目根目录，程序会自动读取 `configs/config.yaml`。如需覆盖敏感配置，仍应使用 `LEAD_MIND_` 前缀的环境变量，避免将密钥写入调试配置或提交到仓库。
 
 ## 开发规范
 
